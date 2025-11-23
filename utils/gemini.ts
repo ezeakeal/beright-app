@@ -1,12 +1,9 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import Constants from "expo-constants";
 import { searchDuckDuckGo, SearchResult } from "./duckduckgo";
 import { fetchPageContent } from "./scraper";
+import { ensureSignedIn } from "../firebaseClient";
 
-// TODO: Replace with your actual Gemini API key
-const API_KEY = (Constants.expoConfig?.extra as any)?.GEMINI_API_KEY as string;
-
-const genAI = new GoogleGenerativeAI(API_KEY);
+// Replace with your deployed Cloud Function URL (HTTP trigger) for text generation
+const GCF_TEXT_URL = "https://YOUR_CLOUD_FUNCTION_URL";
 
 export interface AnalysisResult {
     topic: string;
@@ -51,12 +48,16 @@ export const getRandomFruitPair = () => {
 };
 
 const callGemini = async (prompt: string): Promise<any> => {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    return JSON.parse(cleanText);
+    const idToken = await ensureSignedIn();
+    const res = await fetch(GCF_TEXT_URL, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ prompt }),
+    });
+    return await res.json();
 };
 
 export const analyzeConflictStaged = async (

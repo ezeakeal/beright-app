@@ -1,0 +1,19 @@
+{
+  "name": "bright-app-gcf",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "functions-framework --target=generateText"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.4.0",
+    "firebase-admin": "^12.6.0"
+  }
+}
+
+
