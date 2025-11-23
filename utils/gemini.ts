@@ -3,7 +3,7 @@ import { fetchPageContent } from "./scraper";
 import { ensureSignedIn } from "../firebaseClient";
 
 // Replace with your deployed Cloud Function URL (HTTP trigger) for text generation
-const GCF_TEXT_URL = "https://YOUR_CLOUD_FUNCTION_URL";
+const GCF_TEXT_URL = "https://beright-app-1021561698058.europe-west1.run.app";
 
 export interface AnalysisResult {
     topic: string;
@@ -47,7 +47,15 @@ export const getRandomFruitPair = () => {
     return [shuffled[0], shuffled[1]];
 };
 
-const callGemini = async (prompt: string): Promise<any> => {
+type ServerAction =
+    | "initial"
+    | "queries"
+    | "conflict"
+    | "supportQuery"
+    | "support"
+    | "final";
+
+const postModel = async (body: Record<string, any>): Promise<any> => {
     const idToken = await ensureSignedIn();
     const res = await fetch(GCF_TEXT_URL, {
         method: "POST",
@@ -55,9 +63,32 @@ const callGemini = async (prompt: string): Promise<any> => {
             "Content-Type": "application/json",
             "Authorization": `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify(body),
     });
-    return await res.json();
+    const contentType = res.headers.get("content-type") || "";
+    const bodyText = await res.text();
+
+    if (!res.ok) {
+        // Surface full status and raw body for debugging
+        throw new Error(`Gemini endpoint HTTP ${res.status} ${res.statusText}. Body: ${bodyText}`);
+    }
+
+    try {
+        // Prefer JSON, but if server returns text/json, still parse explicitly
+        if (contentType.includes("application/json")) {
+            return JSON.parse(bodyText);
+        }
+        return JSON.parse(bodyText);
+    } catch (err) {
+        // Show the exact response that failed JSON parsing
+        console.error("callGemini JSON parse failed. Response body:", bodyText);
+        throw err;
+    }
+};
+
+// Back-compat helper (still works if we want to send raw prompt)
+const callGemini = async (prompt: string): Promise<any> => {
+    return postModel({ prompt });
 };
 
 export const analyzeConflictStaged = async (
@@ -73,27 +104,12 @@ export const analyzeConflictStaged = async (
         // Stage 1: Initial Analysis
         onProgress("Initial Analysis", 1 / 4);
 
-        const previousContext = previousAnalysis
-            ? `\n\nPREVIOUS ANALYSIS CONTEXT (maintain continuity with this):\nPrevious Summary: ${previousAnalysis.summaryBullets.join('; ')}\nPrevious P1 Insights: ${previousAnalysis.perspectiveABullets.join('; ')}\nPrevious P2 Insights: ${previousAnalysis.perspectiveBBullets.join('; ')}\nPrevious Narration: ${previousAnalysis.narration}\n`
-            : '';
+        // Prompts are now built on the server; we only send structured actions/payloads.
 
-        const initialPrompt = `
-      Topic: "${topic}"
-      
-      Perspective 1 (P1): "${opinionA}"
-      Perspective 2 (P2): "${opinionB}"
-      ${previousContext}
-      Return JSON with:
-      - summaryBullets: 3 short bullets (max 10 words each) about common ground on this topic
-      - perspectiveABullets: 3 encouraging bullets - why we'd AGREE with P1's view and what's valuable about it
-      - perspectiveBBullets: 3 encouraging bullets - why we'd AGREE with P2's view and what's valuable about it
-      - narration: 2-3 sentences. Encouraging, optimistic tone. Emphasize what both perspectives share.
-      - oneLineSummary: One sentence (max 12 words) about shared understanding
-      
-      Return ONLY valid JSON, no markdown.
-    `;
-
-        const initial = await callGemini(initialPrompt);
+        const initial = await postModel({
+            action: "initial",
+            payload: { topic, opinionA, opinionB, previousAnalysis }
+        });
         onProgress("Initial Analysis", 1 / 4, {
             stageName: "Initial Understanding",
             summaryBullets: initial.summaryBullets,
@@ -103,21 +119,12 @@ export const analyzeConflictStaged = async (
 
         // Stage 2: Generate Conflicting Search Queries
         onProgress("Generating conflicting search queries", 2 / 4);
-        const queryPrompt = `
-      Topic: "${topic}"
-      Perspective 1 (P1): "${opinionA}"
-      Perspective 2 (P2): "${opinionB}"
-      
-      Generate search queries to find evidence supporting each perspective.
-      
-      Return JSON with:
-      - queryA: Search query for P1's perspective (5-8 words)
-      - queryB: Search query for P2's perspective (5-8 words)
-      
-      Return ONLY valid JSON.
-    `;
+        // Server builds the query prompt.
 
-        const queries = await callGemini(queryPrompt);
+        const queries = await postModel({
+            action: "queries",
+            payload: { topic, opinionA, opinionB }
+        });
 
         // Stage 3: Search and analyze conflicting evidence
         onProgress("Searching for conflicting perspectives", 2.5 / 4);
@@ -137,29 +144,20 @@ export const analyzeConflictStaged = async (
             resultsB.slice(0, 2).map(r => fetchPageContent(r.url))
         );
 
-        const conflictPrompt = `
-      Topic: "${topic}"
-      Perspective 1 (P1): "${opinionA}"
-      Perspective 2 (P2): "${opinionB}"
-      
-      Research findings for each perspective:
-      P1 search: "${queries.queryA}"
-      Evidence: ${contentA.join(' ')}
-      
-      P2 search: "${queries.queryB}"
-      Evidence: ${contentB.join(' ')}
-      
-      Bearing in mind that BOTH perspectives have validity:
-      
-      Return JSON with:
-      - summaryBullets: 3 bullets on why each perspective might initially disagree with the other (while acknowledging both are valid)
-      - narration: 2-3 sentences on the tension between perspectives, framed constructively
-      - oneLineSummary: One sentence (max 12 words) about the disagreement
-      
-      Return ONLY valid JSON.
-    `;
+        // Server builds the conflict prompt using evidence we send.
 
-        const conflict = await callGemini(conflictPrompt);
+        const conflict = await postModel({
+            action: "conflict",
+            payload: {
+                topic,
+                opinionA,
+                opinionB,
+                queryA: queries.queryA,
+                queryB: queries.queryB,
+                evidenceA: contentA.join(' '),
+                evidenceB: contentB.join(' ')
+            }
+        });
         onProgress("Conflicting Evidence", 3 / 4, {
             stageName: "Conflicting Perspectives",
             summaryBullets: conflict.summaryBullets,
@@ -169,43 +167,30 @@ export const analyzeConflictStaged = async (
 
         // Stage 4: Generate Supporting Search Queries
         onProgress("Searching for common ground", 3.5 / 4);
-        const supportQueryPrompt = `
-      Topic: "${topic}"
-      Perspective 1 (P1): "${opinionA}"
-      Perspective 2 (P2): "${opinionB}"
-      
-      Generate a search query to find nuanced perspectives or synthesis on "${topic}".
-      
-      Return JSON with:
-      - query: Search query (5-8 words)
-      
-      Return ONLY valid JSON.
-    `;
+        // Server builds the support search query prompt.
 
-        const supportQuery = await callGemini(supportQueryPrompt);
+        const supportQuery = await postModel({
+            action: "supportQuery",
+            payload: { topic, opinionA, opinionB }
+        });
         const supportResults = await searchDuckDuckGo(supportQuery.query, 3);
         console.log('Support search results:', supportResults);
         const supportContent = await Promise.all(
             supportResults.slice(0, 2).map(r => fetchPageContent(r.url))
         );
 
-        const supportPrompt = `
-      Topic: "${topic}"
-      Perspective 1 (P1): "${opinionA}"
-      Perspective 2 (P2): "${opinionB}"
-      
-      Research on nuanced perspectives: "${supportQuery.query}"
-      Evidence: ${supportContent.join(' ')}
-      
-      Return JSON with:
-      - summaryBullets: 3 bullets on how different views on "${topic}" can coexist
-      - narration: 2-3 sentences on the fuller picture of this topic
-      - oneLineSummary: One sentence (max 12 words) about the synthesis
-      
-      Return ONLY valid JSON.
-    `;
+        // Server builds the support synthesis prompt.
 
-        const support = await callGemini(supportPrompt);
+        const support = await postModel({
+            action: "support",
+            payload: {
+                topic,
+                opinionA,
+                opinionB,
+                supportQuery: supportQuery.query,
+                evidence: supportContent.join(' ')
+            }
+        });
         onProgress("Supporting Evidence", 3.75 / 4, {
             stageName: "Finding Common Ground",
             summaryBullets: support.summaryBullets,
@@ -215,28 +200,19 @@ export const analyzeConflictStaged = async (
 
         // Stage 5: Final Synthesis
         onProgress("Final synthesis", 4 / 4);
-        const finalPrompt = `
-      Topic: "${topic}"
-      Perspective 1 (P1): "${opinionA}"
-      Perspective 2 (P2): "${opinionB}"
-      
-      Research journey:
-      - Initial agreement: ${initial.narration}
-      - Points of tension: ${conflict.narration}
-      - Synthesis: ${support.narration}
-      
-      You're Andrew Callaghan - impartial, friendly, punchy with facts. Now that both perspectives are INFORMED:
-      
-      Return JSON with:
-      - summaryBullets: 3 CONCISE bullets showing how both can agree after being informed
-      - perspectiveABullets: 3 short, punchy bullets for P1 - valuable insights to know. Casual, fact-driven. NO greetings or addresses.
-      - perspectiveBBullets: 3 short, punchy bullets for P2 - valuable insights to know. Casual, fact-driven. NO greetings or addresses.
-      - narration: 2-3 sentences. Friendly, impartial. Show how understanding the full picture creates agreement.
-      
-      Return ONLY valid JSON.
-    `;
+        // Server builds the final synthesis prompt.
 
-        const final = await callGemini(finalPrompt);
+        const final = await postModel({
+            action: "final",
+            payload: {
+                topic,
+                opinionA,
+                opinionB,
+                initialNarration: initial.narration,
+                conflictNarration: conflict.narration,
+                supportNarration: support.narration
+            }
+        });
 
         // Collect relevant links
         const summaryLinks = supportResults.slice(0, 2).map(r => ({ title: r.title, url: r.url }));
