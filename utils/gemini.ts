@@ -69,6 +69,9 @@ const postModel = async (body: Record<string, any>): Promise<any> => {
     const bodyText = await res.text();
 
     if (!res.ok) {
+        if (res.status === 429) {
+            throw new Error("RATE_LIMIT_EXCEEDED");
+        }
         // Surface full status and raw body for debugging
         throw new Error(`Gemini endpoint HTTP ${res.status} ${res.statusText}. Body: ${bodyText}`);
     }
@@ -86,9 +89,26 @@ const postModel = async (body: Record<string, any>): Promise<any> => {
     }
 };
 
-// Back-compat helper (still works if we want to send raw prompt)
-const callGemini = async (prompt: string): Promise<any> => {
-    return postModel({ prompt });
+// Helper to ensure bullets are always strings, handling potential object returns from LLM
+const sanitizeBullets = (bullets: any): string[] => {
+    if (!Array.isArray(bullets)) return [];
+    
+    return bullets.map(b => {
+        if (typeof b === 'string') return b;
+        if (typeof b === 'object' && b !== null) {
+            // Handle the specific case seen in errors: { perspective, disagreementPoints }
+            if (b.perspective && b.disagreementPoints) {
+                return `${b.perspective}: ${b.disagreementPoints}`;
+            }
+            // Fallback for other objects: try to find the first string value or stringify
+            const values = Object.values(b);
+            const stringVal = values.find(v => typeof v === 'string');
+            if (stringVal) return stringVal as string;
+            
+            return JSON.stringify(b);
+        }
+        return String(b);
+    });
 };
 
 export const analyzeConflictStaged = async (
@@ -112,7 +132,7 @@ export const analyzeConflictStaged = async (
         });
         onProgress("Initial Analysis", 1 / 4, {
             stageName: "Initial Understanding",
-            summaryBullets: initial.summaryBullets,
+            summaryBullets: sanitizeBullets(initial.summaryBullets),
             narration: initial.narration,
             oneLineSummary: initial.oneLineSummary,
         });
@@ -160,7 +180,7 @@ export const analyzeConflictStaged = async (
         });
         onProgress("Conflicting Evidence", 3 / 4, {
             stageName: "Conflicting Perspectives",
-            summaryBullets: conflict.summaryBullets,
+            summaryBullets: sanitizeBullets(conflict.summaryBullets),
             narration: conflict.narration,
             oneLineSummary: conflict.oneLineSummary,
         });
@@ -193,7 +213,7 @@ export const analyzeConflictStaged = async (
         });
         onProgress("Supporting Evidence", 3.75 / 4, {
             stageName: "Finding Common Ground",
-            summaryBullets: support.summaryBullets,
+            summaryBullets: sanitizeBullets(support.summaryBullets),
             narration: support.narration,
             oneLineSummary: support.oneLineSummary,
         });
@@ -223,9 +243,9 @@ export const analyzeConflictStaged = async (
             topic,
             perspectiveALabel: `${fruitA.name} ${fruitA.emoji}`,
             perspectiveBLabel: `${fruitB.name} ${fruitB.emoji}`,
-            summaryBullets: final.summaryBullets,
-            perspectiveABullets: final.perspectiveABullets,
-            perspectiveBBullets: final.perspectiveBBullets,
+            summaryBullets: sanitizeBullets(final.summaryBullets),
+            perspectiveABullets: sanitizeBullets(final.perspectiveABullets),
+            perspectiveBBullets: sanitizeBullets(final.perspectiveBBullets),
             narration: final.narration,
             summaryLinks,
             perspectiveALinks,

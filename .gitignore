@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Logs
 logs
 *.log
@@ -138,36 +137,16 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-=======
-.env
-.env.development
-.env.production
-.env.local
-.env.staging
-node_modules/
-dist/
-build/
+
+# MacOS
 .DS_Store
-coverage/
-.expo/
-.expo-shared/
-web-build/
-
-.env
-.env.development
-.env.production
-.env.local
-.env.staging
-
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
-node_modules/
+*.pem
 
 # Expo
 .expo/
-dist/
+.expo-shared/
 web-build/
+dist/
 expo-env.d.ts
 
 # Native
@@ -182,22 +161,6 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env*.local
-
-# typescript
-*.tsbuildinfo
-
-# generated native folders
+# Generated native folders (Prebuild)
 /ios
 /android
->>>>>>> 995447a (chore: initial commit (env-based config; removed hard-coded key))

@@ -1,9 +1,10 @@
 import "./global.css";
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, ImageBackground, Linking } from "react-native";
+import { View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, ImageBackground, Linking, Alert } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { SwirlingLoader } from "./components/SwirlingLoader";
+import { InfoModal } from "./components/InfoModal";
 import { analyzeConflictStaged, AnalysisResult, getRandomFruitPair, StageResult } from "./utils/gemini";
 import { saveConversation, getPastConversations, StoredConversation } from "./utils/storage";
 import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withTiming, interpolateColor } from "react-native-reanimated";
@@ -19,6 +20,7 @@ export default function App() {
   const [opinionB, setOpinionB] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [history, setHistory] = useState<StoredConversation[]>([]);
+  const [showInfo, setShowInfo] = useState(false);
 
   const [fruitA, setFruitA] = useState<{ name: string; emoji: string } | null>(null);
   const [fruitB, setFruitB] = useState<{ name: string; emoji: string } | null>(null);
@@ -164,8 +166,17 @@ export default function App() {
         });
       }, 1000);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      if (error.message === "RATE_LIMIT_EXCEEDED") {
+        Alert.alert(
+          "Too Many Requests",
+          "We are experiencing high traffic. Please try again in a moment.",
+          [{ text: "OK" }]
+        );
+      } else {
+        Alert.alert("Error", "Something went wrong. Please try again.");
+      }
       setAppState("INPUT");
     }
   };
@@ -186,7 +197,14 @@ export default function App() {
             <StatusBar style="dark" />
 
             {appState === "HOME" && (
-              <Animated.View entering={FadeIn} className="flex-1 justify-center items-center p-6">
+              <Animated.View entering={FadeIn} className="flex-1 justify-center items-center p-6 relative">
+                <TouchableOpacity
+                  onPress={() => setShowInfo(true)}
+                  className="absolute top-0 right-6 p-2 bg-white/40 rounded-full"
+                >
+                  <Text className="text-slate-700 font-bold text-lg">Info ⓘ</Text>
+                </TouchableOpacity>
+
                 <Text className="text-5xl font-bold text-slate-800 mb-2 text-center">B'right</Text>
                 <Text className="text-xl text-slate-600 mb-12 text-center">Find harmony in conflict.</Text>
 
@@ -416,8 +434,7 @@ export default function App() {
                   {/* Final Summary Card */}
                   <View className="bg-white/95 rounded-3xl p-6 mb-6 shadow-xl">
                     <Text className="text-center text-slate-500 font-medium uppercase tracking-widest text-xs mb-1">Topic</Text>
-                    <Text className="text-center text-2xl font-bold text-slate-800 mb-2">{result.topic}</Text>
-                    <Text className="text-center text-xl font-bold text-indigo-600 mb-4">Harmony! 🌟</Text>
+                    <Text className="text-center text-2xl font-bold text-indigo-600 mb-4">{result.topic}</Text>
 
                     {result.summaryBullets.map((bullet, i) => (
                       <Text key={i} className="text-base text-slate-800 leading-relaxed font-medium mb-2">
@@ -523,6 +540,7 @@ export default function App() {
             )}
           </SafeAreaView>
         </Animated.View>
+        <InfoModal visible={showInfo} onClose={() => setShowInfo(false)} />
       </ImageBackground>
     </SafeAreaProvider>
   );

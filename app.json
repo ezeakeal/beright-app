@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "conflict-resolution-app",
+    "name": "B'right",
     "slug": "conflict-resolution-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,14 +8,19 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.danvagg.conflictresolutionapp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.danvagg.conflictresolutionapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -25,6 +30,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "owner": "danvagg",
+    "extra": {
+      "eas": {
+        "projectId": "9c98bf2a-e3dd-49ae-a61f-2e1a69c36ac6"
+      }
     }
   }
 }

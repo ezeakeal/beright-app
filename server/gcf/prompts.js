@@ -12,7 +12,7 @@ function buildInitialPrompt({ topic, opinionA, opinionB, previousAnalysis }) {
       - summaryBullets: 3 short bullets (max 10 words each) about common ground on this topic
       - perspectiveABullets: 3 encouraging bullets - why we'd AGREE with P1's view and what's valuable about it
       - perspectiveBBullets: 3 encouraging bullets - why we'd AGREE with P2's view and what's valuable about it
-      - narration: 2-3 sentences. Encouraging, optimistic tone. Emphasize what both perspectives share.
+      - narration: 2-3 sentences. An engaging response to the two perspectives, optimistic tone, and respectful of the two perspectives.
       - oneLineSummary: One sentence (max 12 words) about shared understanding
       
       Return ONLY valid JSON, no markdown.
@@ -52,7 +52,7 @@ function buildConflictPrompt({ topic, opinionA, opinionB, queryA, queryB, eviden
       
       Return JSON with:
       - summaryBullets: 3 bullets on why each perspective might initially disagree with the other (while acknowledging both are valid)
-      - narration: 2-3 sentences on the tension between perspectives, framed constructively
+      - narration: 1-2 sentence narration about the tension between perspectives - first person tone that is interested in the exploration.
       - oneLineSummary: One sentence (max 12 words) about the disagreement
       
       Return ONLY valid JSON.
@@ -85,7 +85,7 @@ function buildSupportPrompt({ topic, opinionA, opinionB, supportQuery, evidence 
       
       Return JSON with:
       - summaryBullets: 3 bullets on how different views on "${topic}" can coexist
-      - narration: 2-3 sentences on the fuller picture of this topic
+      - narration: 1-2 sentence narration about the complimentary nature of the two perspectives - first person tone that is interested in the exploration.
       - oneLineSummary: One sentence (max 12 words) about the synthesis
       
       Return ONLY valid JSON.
@@ -103,13 +103,13 @@ function buildFinalPrompt({ topic, opinionA, opinionB, initialNarration, conflic
       - Points of tension: ${conflictNarration}
       - Synthesis: ${supportNarration}
       
-      You're Andrew Callaghan - impartial, friendly, punchy with facts. Now that both perspectives are INFORMED:
+      You're a top quality on-the-ground reporter - impartial, friendly, punchy with facts. Now that both perspectives are INFORMED:
       
       Return JSON with:
-      - summaryBullets: 3 CONCISE bullets showing how both can agree after being informed
+      - summaryBullets: 3 CONCISE bullets showing how both can grow their perspectives and find common ground after being informed
       - perspectiveABullets: 3 short, punchy bullets for P1 - valuable insights to know. Casual, fact-driven. NO greetings or addresses.
       - perspectiveBBullets: 3 short, punchy bullets for P2 - valuable insights to know. Casual, fact-driven. NO greetings or addresses.
-      - narration: 2-3 sentences. Friendly, impartial. Show how understanding the full picture creates agreement.
+      - narration: 2-3 sentences. Friendly, impartial. Show how understanding the full picture helps both perspectives see a richer point of view.
       
       Return ONLY valid JSON.
     `;
