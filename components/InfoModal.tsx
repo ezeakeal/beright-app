@@ -29,12 +29,17 @@ export const InfoModal: React.FC<InfoModalProps> = ({ visible, onClose }) => {
             </Text>
 
             <Text className="text-slate-800 text-lg font-bold mb-3">Disclaimer</Text>
-            <Text className="text-slate-600 mb-2 leading-relaxed">
+            <Text className="text-slate-600 mb-6 leading-relaxed">
               This application uses Artificial Intelligence to analyze topics and generate summaries. 
               While we strive for accuracy and neutrality, AI models can make mistakes or exhibit biases.
+              Please use the insights provided as a starting point for your own critical thinking.
             </Text>
-            <Text className="text-slate-600 leading-relaxed">
-              Please use the insights provided as a starting point for your own critical thinking and verify important information independently.
+
+            <Text className="text-slate-800 text-lg font-bold mb-3">Privacy</Text>
+            <Text className="text-slate-600 mb-6 leading-relaxed">
+              We do not track or store any of your personal opinions or data. 
+              Google Sign-In is used solely for managing authentication and subscription tiers to provide 
+              access to advanced AI models. Your conversations remain private and are not harvested.
             </Text>
           </ScrollView>
 
@@ -51,4 +56,3 @@ export const InfoModal: React.FC<InfoModalProps> = ({ visible, onClose }) => {
     </Modal>
   );
 };
-

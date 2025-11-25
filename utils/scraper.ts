@@ -1,3 +1,5 @@
+import { NodeHtmlMarkdown } from 'node-html-markdown';
+
 // Web scraper to fetch and convert HTML to readable text
 export const fetchPageContent = async (url: string): Promise<string> => {
     try {
@@ -9,26 +11,68 @@ export const fetchPageContent = async (url: string): Promise<string> => {
 
         const html = await response.text();
 
-        // Simple HTML to text conversion
-        // Remove script and style tags
-        let text = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-        text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+        // Convert HTML to Markdown
+        const markdown = NodeHtmlMarkdown.translate(html);
 
-        // Remove HTML tags
-        text = text.replace(/<[^>]+>/g, ' ');
+        // Partition by headings
+        const sections: string[] = [];
+        const lines = markdown.split('\n');
+        let currentSection: string[] = [];
 
-        // Decode HTML entities
-        text = text.replace(/&nbsp;/g, ' ');
-        text = text.replace(/&amp;/g, '&');
-        text = text.replace(/&lt;/g, '<');
-        text = text.replace(/&gt;/g, '>');
-        text = text.replace(/&quot;/g, '"');
+        const flushSection = () => {
+            if (currentSection.length > 0) {
+                sections.push(currentSection.join('\n'));
+                currentSection = [];
+            }
+        };
 
-        // Clean up whitespace
-        text = text.replace(/\s+/g, ' ').trim();
+        for (const line of lines) {
+            // Check for Markdown headings (H1-H6) at the start of the line
+            if (line.match(/^#{1,6}\s/)) {
+                flushSection();
+                currentSection.push(line);
+            } else {
+                currentSection.push(line);
+            }
+        }
+        flushSection();
 
-        // Truncate to reasonable length (first 2000 characters)
-        return text.substring(0, 2000);
+        // Analyze sections
+        const sectionData = sections.map((content, index) => ({
+            content,
+            length: content.length,
+            index
+        }));
+
+        // Sort by length descending to prioritize largest content blocks
+        sectionData.sort((a, b) => b.length - a.length);
+
+        let totalLength = 0;
+        const limit = 10000;
+        const selectedSections: typeof sectionData = [];
+
+        for (const section of sectionData) {
+            if (totalLength + section.length <= limit) {
+                selectedSections.push(section);
+                totalLength += section.length;
+            } else if (selectedSections.length === 0) {
+                // If the single largest section is bigger than the limit, take a truncated version
+                const truncated = section.content.substring(0, limit);
+                selectedSections.push({
+                    ...section,
+                    content: truncated,
+                    length: truncated.length
+                });
+                totalLength += truncated.length;
+                break;
+            }
+        }
+
+        // Sort back by original index to preserve document flow
+        selectedSections.sort((a, b) => a.index - b.index);
+
+        return selectedSections.map(s => s.content).join('\n\n');
+
     } catch (error) {
         console.error(`Failed to fetch ${url}:`, error);
         return '';

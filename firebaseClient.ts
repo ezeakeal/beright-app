@@ -1,7 +1,10 @@
-import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously } from "firebase/auth";
+// This file provides a compatibility layer for Web vs Native Firebase
+import { Platform } from 'react-native';
+import { initializeApp, getApp, getApps } from "firebase/app";
+import { getAuth, signInAnonymously, onAuthStateChanged, User } from "firebase/auth";
+import nativeAuth from "@react-native-firebase/auth";
 
-// Firebase Web config (public, not a secret)
+// Web configuration
 const firebaseConfig = {
     apiKey: "AIzaSyCXa3n84FVsa-q0-rD6zlTxjBWt9WsfBxM",
     authDomain: "beright-app.firebaseapp.com",
@@ -12,12 +15,34 @@ const firebaseConfig = {
     measurementId: "G-D0YP8BDPDK",
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+// Initialize Web SDK if on web
+let webAuth: any;
+if (Platform.OS === 'web') {
+    if (getApps().length === 0) {
+        initializeApp(firebaseConfig);
+    }
+    webAuth = getAuth();
+}
 
 export async function ensureSignedIn(): Promise<string> {
-    const user = auth.currentUser ?? (await signInAnonymously(auth)).user;
-    return await user.getIdToken();
+    if (Platform.OS === 'web') {
+        const user = webAuth.currentUser ?? (await signInAnonymously(webAuth)).user;
+        return await user.getIdToken();
+    } else {
+        let user = nativeAuth().currentUser;
+        if (!user) {
+             try {
+               const cred = await nativeAuth().signInAnonymously();
+               user = cred.user;
+            } catch (e) {
+                console.error("Failed to sign in anonymously", e);
+                throw e;
+            }
+        }
+        return await user.getIdToken();
+    }
 }
+
+export { webAuth };
 
 

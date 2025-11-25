@@ -78,7 +78,16 @@ exports.generateText = async (req, res) => {
       tier === 'pro'
         ? (process.env.GEMINI_API_KEY_PRO || process.env.GEMINI_API_KEY)
         : (process.env.GEMINI_API_KEY_FREE || process.env.GEMINI_API_KEY);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    
+    // Model selection based on user tier
+    let model = 'gemini-2.0-flash-lite'; // Default/Anonymous
+    if (tier === 'free') {
+      model = 'gemini-2.5-flash-lite';
+    } else if (tier === 'pro' || tier === 'subscribed') {
+      model = 'gemini-2.5-flash-preview-09-2025';
+    }
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const r = await fetch(url, {
       method: 'POST',

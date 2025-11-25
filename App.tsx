@@ -5,15 +5,25 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { SwirlingLoader } from "./components/SwirlingLoader";
 import { InfoModal } from "./components/InfoModal";
+import { LoginModal } from "./components/LoginModal";
 import { analyzeConflictStaged, AnalysisResult, getRandomFruitPair, StageResult } from "./utils/gemini";
 import { saveConversation, getPastConversations, StoredConversation } from "./utils/storage";
 import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withTiming, interpolateColor } from "react-native-reanimated";
 import * as Speech from "expo-speech";
 import sampleTopics from "./data/sampleTopics.json";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
 type AppState = "HOME" | "TOPIC" | "INPUT" | "ANALYZING" | "RESULTS" | "FOLLOWUP" | "HISTORY";
 
 export default function App() {
+  return (
+    <AuthProvider>
+        <AppContent />
+    </AuthProvider>
+  );
+}
+
+function AppContent() {
   const [appState, setAppState] = useState<AppState>("HOME");
   const [topic, setTopic] = useState("");
   const [opinionA, setOpinionA] = useState("");
@@ -21,6 +31,8 @@ export default function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [history, setHistory] = useState<StoredConversation[]>([]);
   const [showInfo, setShowInfo] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const { user, userTier } = useAuth();
 
   const [fruitA, setFruitA] = useState<{ name: string; emoji: string } | null>(null);
   const [fruitB, setFruitB] = useState<{ name: string; emoji: string } | null>(null);
@@ -198,12 +210,14 @@ export default function App() {
 
             {appState === "HOME" && (
               <Animated.View entering={FadeIn} className="flex-1 justify-center items-center p-6 relative">
-                <TouchableOpacity
-                  onPress={() => setShowInfo(true)}
-                  className="absolute top-0 right-6 p-2 bg-white/40 rounded-full"
-                >
-                  <Text className="text-slate-700 font-bold text-lg">Info ⓘ</Text>
-                </TouchableOpacity>
+                <View className="absolute top-0 right-6" style={{ zIndex: 50 }}>
+                  <TouchableOpacity
+                    onPress={() => setShowInfo(true)}
+                    className="p-2 bg-white/40 rounded-full"
+                  >
+                    <Text className="text-slate-700 font-bold text-lg">Info ⓘ</Text>
+                  </TouchableOpacity>
+                </View>
 
                 <Text className="text-5xl font-bold text-slate-800 mb-2 text-center">B'right</Text>
                 <Text className="text-xl text-slate-600 mb-12 text-center">Find harmony in conflict.</Text>
@@ -217,9 +231,20 @@ export default function App() {
 
                 <TouchableOpacity
                   onPress={openHistory}
-                  className="bg-white/80 px-8 py-4 rounded-full shadow-sm active:scale-95 transform transition border border-slate-200"
+                  className="bg-white/80 px-8 py-4 rounded-full shadow-sm active:scale-95 transform transition border border-slate-200 mb-8"
                 >
                   <Text className="text-slate-700 text-lg font-bold">Past Conversations</Text>
+                </TouchableOpacity>
+
+                {/* Login Status Button */}
+                <TouchableOpacity
+                  onPress={() => setShowLogin(true)}
+                  className="bg-slate-100/80 px-6 py-3 rounded-full flex-row items-center border border-slate-200/50 shadow-sm"
+                >
+                  <View className={`w-3 h-3 rounded-full mr-2 ${user && !user.isAnonymous ? 'bg-green-500' : 'bg-slate-400'}`} />
+                  <Text className="text-slate-600 font-medium">
+                    {user && !user.isAnonymous ? `Signed in (${userTier})` : "Anonymous User"}
+                  </Text>
                 </TouchableOpacity>
               </Animated.View>
             )}
@@ -541,6 +566,7 @@ export default function App() {
           </SafeAreaView>
         </Animated.View>
         <InfoModal visible={showInfo} onClose={() => setShowInfo(false)} />
+        <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
       </ImageBackground>
     </SafeAreaProvider>
   );
