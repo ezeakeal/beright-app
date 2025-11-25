@@ -50,6 +50,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "1021561698058-6o5ajvrv19p5vddi6o7ga4m4mhtbpj59.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vadix.berightapp",
+            "certificate_hash": "a08d2b78f059b83d82c93beb3201c26869fff014"
+          }
+        },
+        {
           "client_id": "1021561698058-7b30q1uck3h81aajovu3gnv1vfllhsv0.apps.googleusercontent.com",
           "client_type": 3
         }
