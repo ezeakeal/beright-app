@@ -28,7 +28,7 @@ export class ConversationListener {
     });
 
     const { recording } = await Audio.Recording.createAsync(
-      Audio.RecordingOptionsPresets.HIGH_QUALITY
+      Audio.RecordingOptionsPresets.MEDIUM_QUALITY
     );
     
     this.recording = recording;

@@ -103,19 +103,18 @@ exports.generateText = async (req, res) => {
 
 1. The main TOPIC being discussed
 2. Two distinct VIEWPOINTS or perspectives being debated
-3. A full transcript of the conversation
 
 Important:
-- If there are more than 2 speakers, identify the 2 most prominent opposing viewpoints
+- Identify the 2 most prominent opposing viewpoints
 - Each viewpoint should be a clear, concise statement (1-2 sentences)
 - If the conversation is unclear or has only one viewpoint, indicate low confidence
+- The conversation is supporting a healthy debate, try find the most significant information for both viewpoints.
 
 Return ONLY a JSON object with this exact structure:
 {
   "topic": "The main subject being discussed",
   "viewpointA": "First perspective or position",
   "viewpointB": "Second, opposing perspective or position",
-  "transcript": "Full conversation transcript with speaker labels if possible",
   "confidence": "high" | "medium" | "low"
 }`
             }
