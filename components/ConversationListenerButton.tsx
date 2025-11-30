@@ -28,16 +28,18 @@ export function ConversationListenerButton({ onConversationExtracted }: Props) {
   // Premium feature check
   if (userTier === 'anonymous' || userTier === 'free') {
     return (
-      <View className="bg-white/90 p-6 rounded-3xl border-2 border-indigo-200 mb-4 shadow-lg">
+      <View className="bg-black/60 border border-zinc-800/50 p-6 rounded-3xl mb-4"
+            style={{ shadowColor: '#3b82f6', shadowOpacity: 0.1, shadowRadius: 20 }}>
         <View className="flex-row items-center mb-3">
           <Text className="text-3xl mr-3">🎙️</Text>
-          <Text className="text-xl font-bold text-indigo-900">Listen In Feature</Text>
+          <Text className="text-xl font-bold text-white/90">Listen In Feature</Text>
         </View>
-        <Text className="text-indigo-800 mb-3">
+        <Text className="text-zinc-400 mb-3">
           Automatically extract topics and viewpoints from recorded conversations.
         </Text>
-        <View className="bg-amber-500 px-4 py-2 rounded-full self-start">
-          <Text className="text-white font-bold">Premium Only</Text>
+        <View className="border border-amber-500/50 px-4 py-2 rounded-full self-start"
+              style={{ shadowColor: '#f59e0b', shadowOpacity: 0.3, shadowRadius: 15 }}>
+          <Text className="text-amber-300/80 font-bold">Premium Only</Text>
         </View>
       </View>
     );
@@ -89,10 +91,11 @@ export function ConversationListenerButton({ onConversationExtracted }: Props) {
 
   if (isProcessing) {
     return (
-      <View className="bg-white/95 p-8 rounded-3xl items-center border-2 border-indigo-200 shadow-lg">
+      <View className="bg-black/80 border border-zinc-800/50 p-8 rounded-3xl items-center"
+            style={{ shadowColor: '#3b82f6', shadowOpacity: 0.15, shadowRadius: 20 }}>
         <Text className="text-6xl mb-4">🎙️</Text>
-        <Text className="text-xl font-bold text-slate-800 mb-2">Processing Conversation...</Text>
-        <Text className="text-slate-600 text-center">
+        <Text className="text-xl font-bold text-white/90 mb-2">Processing Conversation...</Text>
+        <Text className="text-zinc-400 text-center">
           Transcribing audio and extracting viewpoints
         </Text>
       </View>
@@ -101,17 +104,19 @@ export function ConversationListenerButton({ onConversationExtracted }: Props) {
 
   if (isListening) {
     return (
-      <View className="bg-red-50 p-8 rounded-3xl items-center border-2 border-red-300 shadow-lg">
-        <View className="bg-red-500 w-16 h-16 rounded-full items-center justify-center mb-4">
+      <View className="bg-black/70 border-2 border-red-500/50 p-8 rounded-3xl items-center"
+            style={{ shadowColor: '#ef4444', shadowOpacity: 0.3, shadowRadius: 25 }}>
+        <View className="bg-red-500/20 border border-red-500/40 w-16 h-16 rounded-full items-center justify-center mb-4">
           <Text className="text-3xl">🔴</Text>
         </View>
-        <Text className="text-2xl font-bold text-red-900 mb-2">Listening...</Text>
-        <Text className="text-4xl font-mono text-red-700 mb-6">{formatDuration(duration)}</Text>
+        <Text className="text-2xl font-bold text-red-300/80 mb-2">Listening...</Text>
+        <Text className="text-4xl font-mono text-red-400/70 mb-6">{formatDuration(duration)}</Text>
         <TouchableOpacity
           onPress={handleStop}
-          className="bg-red-600 px-8 py-4 rounded-full active:scale-95"
+          className="border-2 border-red-500/50 bg-black/40 px-8 py-4 rounded-full active:scale-95"
+          style={{ shadowColor: '#ef4444', shadowOpacity: 0.3, shadowRadius: 20 }}
         >
-          <Text className="text-white font-bold text-lg">⏹️  Stop & Analyze</Text>
+          <Text className="text-red-300/90 font-bold text-lg">⏹️  Stop & Analyze</Text>
         </TouchableOpacity>
       </View>
     );
@@ -120,11 +125,12 @@ export function ConversationListenerButton({ onConversationExtracted }: Props) {
   return (
     <TouchableOpacity
       onPress={handleStart}
-      className="bg-indigo-600 p-8 rounded-3xl items-center shadow-xl active:scale-95 border-2 border-indigo-400"
+      className="border-2 border-blue-400/50 bg-black/60 p-8 rounded-3xl items-center active:scale-95"
+      style={{ shadowColor: '#3b82f6', shadowOpacity: 0.3, shadowRadius: 25 }}
     >
       <Text className="text-6xl mb-3">🎙️</Text>
-      <Text className="text-2xl font-bold text-white mb-2">Listen In</Text>
-      <Text className="text-indigo-100 text-center text-sm">
+      <Text className="text-2xl font-bold text-white/90 mb-2">Listen In</Text>
+      <Text className="text-zinc-400 text-center text-sm">
         Record a conversation to auto-extract the topic and viewpoints
       </Text>
     </TouchableOpacity>

@@ -81,18 +81,21 @@ export const SwipeablePerspectiveCard: React.FC<SwipeablePerspectiveCardProps> =
                         bottom: 0,
                         width: CARD_WIDTH,
                         [side]: 0,
+                        shadowColor: color === "bg-black/70 border border-purple-900/40" ? '#a855f7' : '#22d3ee',
+                        shadowOpacity: 0.15,
+                        shadowRadius: 20,
                     },
                 ]}
-                className={`${color} p-6 shadow-xl`}
+                className={`${color} p-6`}
             >
                 <TouchableOpacity onPress={toggleCard} className="flex-1">
-                    <Text className="text-2xl font-bold text-slate-800 mb-4">{label}</Text>
+                    <Text className="text-2xl font-bold text-white/80 mb-4">{label}</Text>
                     {bullets.map((bullet, i) => (
-                        <Text key={i} className="text-base text-slate-700 mb-3 leading-relaxed">
+                        <Text key={i} className="text-base text-zinc-300 mb-3 leading-relaxed">
                             • {bullet}
                         </Text>
                     ))}
-                    <Text className="text-xs text-slate-500 mt-4 italic">
+                    <Text className="text-xs text-zinc-500 mt-4 italic">
                         {isExpanded ? "← Swipe to hide" : "Swipe to expand →"}
                     </Text>
                 </TouchableOpacity>

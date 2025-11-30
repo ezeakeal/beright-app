@@ -1,15 +1,16 @@
 import "./global.css";
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, ImageBackground, Linking, Alert } from "react-native";
+import { View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Linking, Alert } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { LinearGradient } from "expo-linear-gradient";
 import { SwirlingLoader } from "./components/SwirlingLoader";
 import { InfoModal } from "./components/InfoModal";
 import { LoginModal } from "./components/LoginModal";
 import { ConversationListenerButton } from "./components/ConversationListenerButton";
 import { analyzeConflictStaged, AnalysisResult, getRandomFruitPair, StageResult } from "./utils/gemini";
 import { saveConversation, getPastConversations, StoredConversation } from "./utils/storage";
-import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withTiming, interpolateColor } from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import * as Speech from "expo-speech";
 import sampleTopics from "./data/sampleTopics.json";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -53,16 +54,12 @@ function AppContent() {
   const analyzingFade = useSharedValue(0);
   const backgroundFadeStyle = useAnimatedStyle(() => {
     return {
-      backgroundColor: interpolateColor(
-        analyzingFade.value,
-        [0, 1],
-        ["rgba(255,255,255,0.30)", "rgba(2,6,23,0.45)"] // from light veil to dim slate
-      ),
+      opacity: analyzingFade.value,
     };
   });
 
   React.useEffect(() => {
-    analyzingFade.value = withTiming(appState === "ANALYZING" ? 1 : 0, { duration: 400 });
+    analyzingFade.value = withTiming(appState === "ANALYZING" ? 0.6 : 0, { duration: 600 });
   }, [appState]);
 
   const startNewConversation = () => {
@@ -200,50 +197,56 @@ function AppContent() {
 
   return (
     <SafeAreaProvider>
-      <ImageBackground
-        source={{ uri: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=2070&auto=format&fit=crop" }}
+      <LinearGradient
+        colors={['#000000', '#0a0a1a', '#050510', '#000000']}
+        locations={[0, 0.3, 0.7, 1]}
         className="flex-1"
-        blurRadius={Platform.OS === 'ios' ? 20 : 5}
       >
-        <Animated.View className="flex-1" style={backgroundFadeStyle}>
+        <Animated.View className="flex-1 bg-black/40" style={backgroundFadeStyle} pointerEvents="none" />
+        <View className="flex-1 absolute inset-0">
           <SafeAreaView className="flex-1">
-            <StatusBar style="dark" />
+            <StatusBar style="light" />
 
             {appState === "HOME" && (
               <Animated.View entering={FadeIn} className="flex-1 justify-center items-center p-6 relative">
                 <View className="absolute top-0 right-6" style={{ zIndex: 50 }}>
                   <TouchableOpacity
                     onPress={() => setShowInfo(true)}
-                    className="p-2 bg-white/40 rounded-full"
+                    className="p-2 border border-zinc-700/50 rounded-full"
+                    style={{ shadowColor: '#ffffff', shadowOpacity: 0.1, shadowRadius: 10 }}
                   >
-                    <Text className="text-slate-700 font-bold text-lg">Info ⓘ</Text>
+                    <Text className="text-zinc-400 font-bold text-lg">Info ⓘ</Text>
                   </TouchableOpacity>
                 </View>
 
-                <Text className="text-5xl font-bold text-slate-800 mb-2 text-center">B'right</Text>
-                <Text className="text-xl text-slate-600 mb-12 text-center">Find harmony in conflict.</Text>
+                <Text className="text-5xl font-bold text-white/90 mb-2 text-center">B'right</Text>
+                <Text className="text-xl text-zinc-400 mb-12 text-center">Find harmony in conflict.</Text>
 
                 <TouchableOpacity
                   onPress={startNewConversation}
-                  className="bg-indigo-600 px-10 py-6 rounded-full shadow-xl active:scale-95 transform transition mb-4"
+                  className="border-2 border-blue-400/50 px-10 py-6 rounded-full active:scale-95 transform transition mb-4"
+                  style={{ shadowColor: '#3b82f6', shadowOpacity: 0.3, shadowRadius: 20 }}
                 >
-                  <Text className="text-white text-2xl font-bold">New Conversation</Text>
+                  <Text className="text-white/90 text-2xl font-bold">New Conversation</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={openHistory}
-                  className="bg-white/80 px-8 py-4 rounded-full shadow-sm active:scale-95 transform transition border border-slate-200 mb-8"
+                  className="border border-zinc-700/50 px-8 py-4 rounded-full active:scale-95 transform transition mb-8"
+                  style={{ shadowColor: '#ffffff', shadowOpacity: 0.05, shadowRadius: 15 }}
                 >
-                  <Text className="text-slate-700 text-lg font-bold">Past Conversations</Text>
+                  <Text className="text-zinc-400 text-lg font-bold">Past Conversations</Text>
                 </TouchableOpacity>
 
                 {/* Login Status Button */}
                 <TouchableOpacity
                   onPress={() => setShowLogin(true)}
-                  className="bg-slate-100/80 px-6 py-3 rounded-full flex-row items-center border border-slate-200/50 shadow-sm"
+                  className="border border-zinc-800/50 px-6 py-3 rounded-full flex-row items-center"
+                  style={{ shadowColor: '#ffffff', shadowOpacity: 0.03, shadowRadius: 10 }}
                 >
-                  <View className={`w-3 h-3 rounded-full mr-2 ${user && !user.isAnonymous ? 'bg-green-500' : 'bg-slate-400'}`} />
-                  <Text className="text-slate-600 font-medium">
+                  <View className={`w-3 h-3 rounded-full mr-2 ${user && !user.isAnonymous ? 'bg-emerald-500/70' : 'bg-zinc-600'}`} 
+                        style={user && !user.isAnonymous ? { shadowColor: '#10b981', shadowOpacity: 0.5, shadowRadius: 8 } : {}} />
+                  <Text className="text-zinc-500 font-medium">
                     {user && !user.isAnonymous ? `Signed in (${userTier})` : "Anonymous User"}
                   </Text>
                 </TouchableOpacity>
@@ -253,30 +256,31 @@ function AppContent() {
             {appState === "HISTORY" && (
               <Animated.View entering={FadeIn} className="flex-1 p-6 pt-12">
                 <View className="flex-row items-center mb-6">
-                  <TouchableOpacity onPress={() => setAppState("HOME")} className="mr-4 p-2 bg-white/50 rounded-full">
-                    <Text className="text-2xl">←</Text>
+                  <TouchableOpacity onPress={() => setAppState("HOME")} className="mr-4 p-2 border border-zinc-700/50 rounded-full">
+                    <Text className="text-2xl text-white/70">←</Text>
                   </TouchableOpacity>
-                  <Text className="text-3xl font-bold text-slate-800">Past Conversations</Text>
+                  <Text className="text-3xl font-bold text-white/90">Past Conversations</Text>
                 </View>
 
                 <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
                   {history.length === 0 ? (
-                    <Text className="text-slate-500 text-center mt-10 italic">No past conversations found.</Text>
+                    <Text className="text-zinc-500 text-center mt-10 italic">No past conversations found.</Text>
                   ) : (
                     history.map((conv) => (
                       <TouchableOpacity
                         key={conv.id}
                         onPress={() => loadConversation(conv)}
-                        className="bg-white/70 p-5 rounded-2xl mb-3 border border-white/50 shadow-sm"
+                        className="bg-black/60 border border-zinc-800/50 p-5 rounded-2xl mb-3"
+                        style={{ shadowColor: '#3b82f6', shadowOpacity: 0.05, shadowRadius: 15 }}
                       >
                         <View className="flex-row justify-between items-start mb-2">
-                          <Text className="text-lg font-bold text-slate-800 flex-1 mr-2">{conv.topic}</Text>
-                          <Text className="text-xs text-slate-500 mt-1">{new Date(conv.timestamp).toLocaleDateString()}</Text>
+                          <Text className="text-lg font-bold text-white/90 flex-1 mr-2">{conv.topic}</Text>
+                          <Text className="text-xs text-zinc-600 mt-1">{new Date(conv.timestamp).toLocaleDateString()}</Text>
                         </View>
-                        <Text className="text-sm text-slate-600 mb-1 numberOfLines={2}">
+                        <Text className="text-sm text-zinc-400 mb-1 numberOfLines={2}">
                           Harmony between {conv.fruitA.name} & {conv.fruitB.name}
                         </Text>
-                        <Text className="text-xs text-indigo-600 font-medium italic mt-2">
+                        <Text className="text-xs text-blue-300/70 font-medium italic mt-2">
                           Tap to view summary →
                         </Text>
                       </TouchableOpacity>
@@ -289,7 +293,7 @@ function AppContent() {
 
             {appState === "TOPIC" && (
               <Animated.View entering={FadeIn} className="flex-1 p-6">
-                <Text className="text-3xl font-bold text-slate-800 mb-4 text-center">What is the topic?</Text>
+                <Text className="text-3xl font-bold text-white/90 mb-4 text-center">What is the topic?</Text>
                 
                 {/* Listen In Feature */}
                 <ConversationListenerButton
@@ -316,14 +320,15 @@ function AppContent() {
                 
                 {/* Divider */}
                 <View className="flex-row items-center my-6">
-                  <View className="flex-1 h-px bg-slate-300" />
-                  <Text className="mx-4 text-slate-500 font-medium">OR</Text>
-                  <View className="flex-1 h-px bg-slate-300" />
+                  <View className="flex-1 h-px bg-zinc-800" />
+                  <Text className="mx-4 text-zinc-600 font-medium">OR</Text>
+                  <View className="flex-1 h-px bg-zinc-800" />
                 </View>
                 
                 <TextInput
-                  className="bg-white/80 p-6 rounded-3xl text-2xl text-center shadow-sm border border-white/50"
+                  className="bg-black/60 border border-zinc-800/50 p-6 rounded-3xl text-2xl text-center text-white/90"
                   placeholder="e.g., Climate Change"
+                  placeholderTextColor="#52525b"
                   value={topic}
                   onChangeText={setTopic}
                   onSubmitEditing={handleTopicSubmit}
@@ -331,23 +336,24 @@ function AppContent() {
                 />
                 <TouchableOpacity
                   onPress={handleTopicSubmit}
-                  className="mt-4 bg-slate-800 self-center px-8 py-4 rounded-full"
+                  className="mt-4 border-2 border-white/30 self-center px-8 py-4 rounded-full"
+                  style={{ shadowColor: '#ffffff', shadowOpacity: 0.15, shadowRadius: 15 }}
                 >
-                  <Text className="text-white font-bold text-lg">Next</Text>
+                  <Text className="text-white/90 font-bold text-lg">Next</Text>
                 </TouchableOpacity>
 
                 {/* Sample Topics */}
-                <Text className="text-center text-slate-600 mt-8 mb-4 font-medium">Or choose a sample topic:</Text>
+                <Text className="text-center text-zinc-400 mt-8 mb-4 font-medium">Or choose a sample topic:</Text>
                 <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
                   {Object.entries(sampleTopics).map(([topicName, perspectives]) => (
                     <TouchableOpacity
                       key={topicName}
                       onPress={() => loadSampleTopic(topicName, perspectives as [string, string])}
-                      className="bg-white/70 p-4 rounded-2xl mb-3 border border-white/50"
+                      className="bg-black/60 border border-zinc-800/50 p-4 rounded-2xl mb-3"
                     >
-                      <Text className="text-lg font-bold text-slate-800 mb-1">{topicName}</Text>
-                      <Text className="text-xs text-slate-600">• {(perspectives as [string, string])[0]}</Text>
-                      <Text className="text-xs text-slate-600">• {(perspectives as [string, string])[1]}</Text>
+                      <Text className="text-lg font-bold text-white/90 mb-1">{topicName}</Text>
+                      <Text className="text-xs text-zinc-500">• {(perspectives as [string, string])[0]}</Text>
+                      <Text className="text-xs text-zinc-500">• {(perspectives as [string, string])[1]}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -361,14 +367,16 @@ function AppContent() {
               >
                 <View className="flex-1 relative">
                   <View className="flex-1 rotate-180 p-4">
-                    <View className="flex-1 bg-white/40 rounded-3xl p-6 border border-white/30 shadow-sm backdrop-blur-md">
-                      <Text className="text-lg font-bold text-slate-700 mb-2 text-center">
+                    <View className="flex-1 bg-black/70 border border-purple-900/40 rounded-3xl p-6"
+                          style={{ shadowColor: '#a855f7', shadowOpacity: 0.15, shadowRadius: 20 }}>
+                      <Text className="text-lg font-bold text-purple-300/70 mb-2 text-center">
                         Perspective {fruitA.name} {fruitA.emoji}
                       </Text>
                       <TextInput
-                        className="flex-1 text-xl text-slate-800 text-center"
+                        className="flex-1 text-xl text-white/80 text-center"
                         multiline
                         placeholder="Type your view..."
+                        placeholderTextColor="#52525b"
                         value={opinionA}
                         onChangeText={setOpinionA}
                       />
@@ -378,21 +386,24 @@ function AppContent() {
                   <View className="absolute top-1/2 left-0 right-0 -mt-8 items-center z-10">
                     <TouchableOpacity
                       onPress={handleResolve}
-                      className="bg-indigo-600 px-8 py-4 rounded-full shadow-xl border-4 border-white/20"
+                      className="border-2 border-blue-400/50 bg-black/40 px-8 py-4 rounded-full"
+                      style={{ shadowColor: '#3b82f6', shadowOpacity: 0.4, shadowRadius: 25 }}
                     >
-                      <Text className="text-white font-bold text-lg tracking-wider">RESOLVE</Text>
+                      <Text className="text-white/90 font-bold text-lg tracking-wider">RESOLVE</Text>
                     </TouchableOpacity>
                   </View>
 
                   <View className="flex-1 p-4">
-                    <View className="flex-1 bg-white/40 rounded-3xl p-6 border border-white/30 shadow-sm backdrop-blur-md">
-                      <Text className="text-lg font-bold text-slate-700 mb-2 text-center">
+                    <View className="flex-1 bg-black/70 border border-cyan-900/40 rounded-3xl p-6"
+                          style={{ shadowColor: '#22d3ee', shadowOpacity: 0.15, shadowRadius: 20 }}>
+                      <Text className="text-lg font-bold text-cyan-300/70 mb-2 text-center">
                         Perspective {fruitB.name} {fruitB.emoji}
                       </Text>
                       <TextInput
-                        className="flex-1 text-xl text-slate-800 text-center"
+                        className="flex-1 text-xl text-white/80 text-center"
                         multiline
                         placeholder="Type your view..."
+                        placeholderTextColor="#52525b"
                         value={opinionB}
                         onChangeText={setOpinionB}
                       />
@@ -407,9 +418,9 @@ function AppContent() {
                 <SwirlingLoader />
                 {/* Top status + progress (kept above everything) */}
                 <View className="absolute top-0 left-0 right-0 p-6 pt-28 z-[100]" style={{ zIndex: 9999, elevation: 50 }}>
-                  <Text className="text-center text-white font-bold text-xl mb-2">{currentStage}</Text>
-                  <View className="bg-white/80 h-2 rounded-full overflow-hidden">
-                    <View className="bg-indigo-600 h-full" style={{ width: `${progress * 100}%` }} />
+                  <Text className="text-center text-white/90 font-bold text-xl mb-2">{currentStage}</Text>
+                  <View className="bg-white/10 border border-white/20 h-2 rounded-full overflow-hidden">
+                    <View className="bg-blue-400/70 h-full" style={{ width: `${progress * 100}%`, shadowColor: '#3b82f6', shadowOpacity: 0.5, shadowRadius: 10 }} />
                   </View>
                 </View>
 
@@ -419,12 +430,12 @@ function AppContent() {
                     <Animated.View
                       key={idx}
                       entering={FadeInDown.delay(200)}
-                      className="bg-white/10 rounded-xl p-5 mb-4"
+                      className="bg-black/40 border border-zinc-800/50 rounded-xl p-5 mb-4"
                     >
-                      <Text className="text-indigo-300 font-bold text-lg mb-2">{stage.stageName}</Text>
-                      <Text className="text-sm text-white/90 italic mb-3 font-medium">{stage.oneLineSummary}</Text>
+                      <Text className="text-blue-300/70 font-bold text-lg mb-2">{stage.stageName}</Text>
+                      <Text className="text-sm text-white/80 italic mb-3 font-medium">{stage.oneLineSummary}</Text>
                       {stage.summaryBullets.map((bullet, i) => (
-                        <Text key={i} className="text-sm text-white/70 mb-1 leading-relaxed">• {bullet}</Text>
+                        <Text key={i} className="text-sm text-zinc-400 mb-1 leading-relaxed">• {bullet}</Text>
                       ))}
                     </Animated.View>
                   ))}
@@ -439,14 +450,16 @@ function AppContent() {
               >
                 <View className="flex-1 relative">
                   <View className="flex-1 rotate-180 p-4">
-                    <View className="flex-1 bg-white/40 rounded-3xl p-6 border border-white/30 shadow-sm backdrop-blur-md">
-                      <Text className="text-lg font-bold text-slate-700 mb-2 text-center">
+                    <View className="flex-1 bg-black/70 border border-purple-900/40 rounded-3xl p-6"
+                          style={{ shadowColor: '#a855f7', shadowOpacity: 0.15, shadowRadius: 20 }}>
+                      <Text className="text-lg font-bold text-purple-300/70 mb-2 text-center">
                         {fruitA.name} {fruitA.emoji} - Add More Details
                       </Text>
                       <TextInput
-                        className="flex-1 text-xl text-slate-800 text-center"
+                        className="flex-1 text-xl text-white/80 text-center"
                         multiline
                         placeholder="Add more context or details..."
+                        placeholderTextColor="#52525b"
                         value={followUpA}
                         onChangeText={setFollowUpA}
                       />
@@ -460,21 +473,24 @@ function AppContent() {
                         setOpinionB(previousOpinionB + "\n\nAdditional context: " + followUpB);
                         handleResolve();
                       }}
-                      className="bg-indigo-600 px-8 py-4 rounded-full shadow-xl border-4 border-white/20"
+                      className="border-2 border-blue-400/50 bg-black/40 px-8 py-4 rounded-full"
+                      style={{ shadowColor: '#3b82f6', shadowOpacity: 0.4, shadowRadius: 25 }}
                     >
-                      <Text className="text-white font-bold text-lg tracking-wider">CONTINUE</Text>
+                      <Text className="text-white/90 font-bold text-lg tracking-wider">CONTINUE</Text>
                     </TouchableOpacity>
                   </View>
 
                   <View className="flex-1 p-4">
-                    <View className="flex-1 bg-white/40 rounded-3xl p-6 border border-white/30 shadow-sm backdrop-blur-md">
-                      <Text className="text-lg font-bold text-slate-700 mb-2 text-center">
+                    <View className="flex-1 bg-black/70 border border-cyan-900/40 rounded-3xl p-6"
+                          style={{ shadowColor: '#22d3ee', shadowOpacity: 0.15, shadowRadius: 20 }}>
+                      <Text className="text-lg font-bold text-cyan-300/70 mb-2 text-center">
                         {fruitB.name} {fruitB.emoji} - Add More Details
                       </Text>
                       <TextInput
-                        className="flex-1 text-xl text-slate-800 text-center"
+                        className="flex-1 text-xl text-white/80 text-center"
                         multiline
                         placeholder="Add more context or details..."
+                        placeholderTextColor="#52525b"
                         value={followUpB}
                         onChangeText={setFollowUpB}
                       />
@@ -488,31 +504,32 @@ function AppContent() {
               <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
                 <Animated.View entering={FadeIn.delay(300)} className="p-6">
                   {/* Final Summary Card */}
-                  <View className="bg-white/95 rounded-3xl p-6 mb-6 shadow-xl">
-                    <Text className="text-center text-slate-500 font-medium uppercase tracking-widest text-xs mb-1">Topic</Text>
-                    <Text className="text-center text-2xl font-bold text-indigo-600 mb-4">{result.topic}</Text>
+                  <View className="bg-black/80 border border-zinc-800/50 rounded-3xl p-6 mb-6"
+                        style={{ shadowColor: '#3b82f6', shadowOpacity: 0.1, shadowRadius: 25 }}>
+                    <Text className="text-center text-zinc-600 font-medium uppercase tracking-widest text-xs mb-1">Topic</Text>
+                    <Text className="text-center text-2xl font-bold text-blue-300/70 mb-4">{result.topic}</Text>
 
                     {result.summaryBullets.map((bullet, i) => (
-                      <Text key={i} className="text-base text-slate-800 leading-relaxed font-medium mb-2">
+                      <Text key={i} className="text-base text-white/80 leading-relaxed font-medium mb-2">
                         • {bullet}
                       </Text>
                     ))}
 
-                    <Text className="text-sm text-slate-500 italic mt-4 leading-relaxed">
+                    <Text className="text-sm text-zinc-400 italic mt-4 leading-relaxed">
                       {result.narration}
                     </Text>
 
                     {/* Summary Links */}
                     {result.summaryLinks.length > 0 && (
                       <View className="mt-4">
-                        <Text className="text-xs text-slate-500 font-bold uppercase mb-2">Related Reading</Text>
+                        <Text className="text-xs text-zinc-600 font-bold uppercase mb-2">Related Reading</Text>
                         {result.summaryLinks.map((link, i) => (
                           <TouchableOpacity
                             key={i}
                             onPress={() => Linking.openURL(link.url)}
                             className="mb-2"
                           >
-                            <Text className="text-sm text-indigo-600 underline">{link.title}</Text>
+                            <Text className="text-sm text-blue-300/70 underline">{link.title}</Text>
                           </TouchableOpacity>
                         ))}
                       </View>
@@ -521,54 +538,57 @@ function AppContent() {
                     <View className="flex-row justify-center space-x-4 mt-4">
                       <TouchableOpacity
                         onPress={() => Speech.speak(result.narration, { rate: 0.85, pitch: 1.05, language: 'en-US' })}
-                        className="bg-indigo-600 px-6 py-2 rounded-full"
+                        className="border border-blue-400/50 px-6 py-2 rounded-full"
+                        style={{ shadowColor: '#3b82f6', shadowOpacity: 0.2, shadowRadius: 15 }}
                       >
-                        <Text className="text-white font-bold">🔊 Play</Text>
+                        <Text className="text-white/90 font-bold">🔊 Play</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={stopAudio} className="bg-slate-300 px-6 py-2 rounded-full">
-                        <Text className="text-slate-700 font-bold">Stop</Text>
+                      <TouchableOpacity onPress={stopAudio} className="border border-zinc-700/50 px-6 py-2 rounded-full">
+                        <Text className="text-zinc-400 font-bold">Stop</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
 
                   {/* Fruit Perspectives Side-by-Side */}
                   <View className="flex-row justify-between mb-6">
-                    <Animated.View entering={FadeInDown.delay(500)} className="w-[48%] bg-red-100/95 p-5 rounded-2xl shadow-lg">
-                      <Text className="text-xl font-bold text-slate-800 mb-3">{result.perspectiveALabel}</Text>
+                    <Animated.View entering={FadeInDown.delay(500)} className="w-[48%] bg-black/70 border border-purple-900/40 p-5 rounded-2xl"
+                                   style={{ shadowColor: '#a855f7', shadowOpacity: 0.15, shadowRadius: 20 }}>
+                      <Text className="text-xl font-bold text-purple-300/70 mb-3">{result.perspectiveALabel}</Text>
                       {result.perspectiveABullets.map((bullet, i) => (
-                        <Text key={i} className="text-sm text-slate-700 mb-2 leading-snug">• {bullet}</Text>
+                        <Text key={i} className="text-sm text-zinc-300 mb-2 leading-snug">• {bullet}</Text>
                       ))}
                       {result.perspectiveALinks.length > 0 && (
                         <View className="mt-3">
-                          <Text className="text-xs text-slate-600 font-bold mb-1">Links</Text>
+                          <Text className="text-xs text-zinc-500 font-bold mb-1">Links</Text>
                           {result.perspectiveALinks.map((link, i) => (
                             <TouchableOpacity
                               key={i}
                               onPress={() => Linking.openURL(link.url)}
                               className="mb-1"
                             >
-                              <Text className="text-xs text-red-700 underline">{link.title}</Text>
+                              <Text className="text-xs text-purple-300/70 underline">{link.title}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
                       )}
                     </Animated.View>
 
-                    <Animated.View entering={FadeInDown.delay(500)} className="w-[48%] bg-yellow-100/95 p-5 rounded-2xl shadow-lg">
-                      <Text className="text-xl font-bold text-slate-800 mb-3">{result.perspectiveBLabel}</Text>
+                    <Animated.View entering={FadeInDown.delay(500)} className="w-[48%] bg-black/70 border border-cyan-900/40 p-5 rounded-2xl"
+                                   style={{ shadowColor: '#22d3ee', shadowOpacity: 0.15, shadowRadius: 20 }}>
+                      <Text className="text-xl font-bold text-cyan-300/70 mb-3">{result.perspectiveBLabel}</Text>
                       {result.perspectiveBBullets.map((bullet, i) => (
-                        <Text key={i} className="text-sm text-slate-700 mb-2 leading-snug">• {bullet}</Text>
+                        <Text key={i} className="text-sm text-zinc-300 mb-2 leading-snug">• {bullet}</Text>
                       ))}
                       {result.perspectiveBLinks.length > 0 && (
                         <View className="mt-3">
-                          <Text className="text-xs text-slate-600 font-bold mb-1">Links</Text>
+                          <Text className="text-xs text-zinc-500 font-bold mb-1">Links</Text>
                           {result.perspectiveBLinks.map((link, i) => (
                             <TouchableOpacity
                               key={i}
                               onPress={() => Linking.openURL(link.url)}
                               className="mb-1"
                             >
-                              <Text className="text-xs text-yellow-800 underline">{link.title}</Text>
+                              <Text className="text-xs text-cyan-300/70 underline">{link.title}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
@@ -580,25 +600,26 @@ function AppContent() {
                   <View className="flex-row justify-between mb-8 space-x-3">
                     <TouchableOpacity
                       onPress={handleFollowUp}
-                      className="flex-1 bg-indigo-600 py-4 rounded-2xl"
+                      className="flex-1 border-2 border-blue-400/50 py-4 rounded-2xl"
+                      style={{ shadowColor: '#3b82f6', shadowOpacity: 0.2, shadowRadius: 15 }}
                     >
-                      <Text className="text-white text-center font-bold text-lg">Follow Up</Text>
+                      <Text className="text-white/90 text-center font-bold text-lg">Follow Up</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => { stopAudio(); setAppState("HOME"); }}
-                      className="flex-1 bg-slate-800 py-4 rounded-2xl"
+                      className="flex-1 border border-zinc-700/50 py-4 rounded-2xl"
                     >
-                      <Text className="text-white text-center font-bold text-lg">Start Over</Text>
+                      <Text className="text-zinc-400 text-center font-bold text-lg">Start Over</Text>
                     </TouchableOpacity>
                   </View>
                 </Animated.View>
               </ScrollView>
             )}
           </SafeAreaView>
-        </Animated.View>
+        </View>
         <InfoModal visible={showInfo} onClose={() => setShowInfo(false)} />
         <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
-      </ImageBackground>
+      </LinearGradient>
     </SafeAreaProvider>
   );
 }

@@ -122,7 +122,7 @@ Return ONLY a JSON object with this exact structure:
         }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 2046,
         }
       };
       

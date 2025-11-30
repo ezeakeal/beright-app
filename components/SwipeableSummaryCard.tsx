@@ -66,29 +66,32 @@ export const SwipeableSummaryCard: React.FC<SwipeableSummaryCardProps> = ({
                         right: 0,
                         height: CARD_HEIGHT,
                         zIndex: 10,
+                        shadowColor: '#3b82f6',
+                        shadowOpacity: 0.2,
+                        shadowRadius: 30,
                     },
                 ]}
-                className="bg-white/95 rounded-b-3xl shadow-2xl"
+                className="bg-black/90 border border-zinc-800/50 rounded-b-3xl"
             >
                 <TouchableOpacity onPress={toggleCard} className="flex-1 p-6">
                     <View className="items-center mb-4">
-                        <View className="w-12 h-1 bg-slate-300 rounded-full mb-4" />
-                        <Text className="text-slate-500 font-medium uppercase tracking-widest text-xs mb-1">Topic</Text>
-                        <Text className="text-2xl font-bold text-slate-800 text-center mb-2">{topic}</Text>
-                        <Text className="text-xl font-bold text-indigo-600">Harmony! 🌟</Text>
+                        <View className="w-12 h-1 bg-zinc-700 rounded-full mb-4" />
+                        <Text className="text-zinc-600 font-medium uppercase tracking-widest text-xs mb-1">Topic</Text>
+                        <Text className="text-2xl font-bold text-white/90 text-center mb-2">{topic}</Text>
+                        <Text className="text-xl font-bold text-blue-300/70">Harmony! 🌟</Text>
                     </View>
 
                     {bullets.map((bullet, i) => (
-                        <Text key={i} className="text-lg text-slate-800 leading-relaxed font-medium mb-3">
+                        <Text key={i} className="text-lg text-white/80 leading-relaxed font-medium mb-3">
                             • {bullet}
                         </Text>
                     ))}
 
-                    <Text className="text-sm text-slate-500 italic mt-4 leading-relaxed">
+                    <Text className="text-sm text-zinc-400 italic mt-4 leading-relaxed">
                         {narration}
                     </Text>
 
-                    <Text className="text-xs text-slate-400 mt-4 text-center">
+                    <Text className="text-xs text-zinc-600 mt-4 text-center">
                         {isExpanded ? "↑ Swipe up to see perspectives" : "↓ Swipe down to expand"}
                     </Text>
                 </TouchableOpacity>

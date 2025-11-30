@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { View, Text, Dimensions } from "react-native";
+import { View } from "react-native";
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
@@ -10,72 +10,67 @@ import Animated, {
     cancelAnimation,
 } from "react-native-reanimated";
 
-const { width } = Dimensions.get("window");
-
 export const SwirlingLoader = () => {
-    const rotation = useSharedValue(0);
+    const rotation1 = useSharedValue(0);
+    const rotation2 = useSharedValue(0);
     const scale = useSharedValue(1);
-    const textOpacity = useSharedValue(0);
 
     useEffect(() => {
-        rotation.value = withRepeat(
-            withTiming(360, { duration: 2000, easing: Easing.linear }),
+        rotation1.value = withRepeat(
+            withTiming(360, { duration: 4000, easing: Easing.linear }),
+            -1
+        );
+
+        rotation2.value = withRepeat(
+            withTiming(-360, { duration: 6000, easing: Easing.linear }),
             -1
         );
 
         scale.value = withRepeat(
             withSequence(
-                withTiming(1.2, { duration: 1000 }),
-                withTiming(1, { duration: 1000 })
-            ),
-            -1,
-            true
-        );
-
-        textOpacity.value = withRepeat(
-            withSequence(
-                withTiming(1, { duration: 1500 }),
-                withTiming(0.5, { duration: 1500 })
+                withTiming(1.1, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+                withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) })
             ),
             -1,
             true
         );
 
         return () => {
-            cancelAnimation(rotation);
+            cancelAnimation(rotation1);
+            cancelAnimation(rotation2);
             cancelAnimation(scale);
-            cancelAnimation(textOpacity);
         };
     }, []);
 
-    const animatedStyle = useAnimatedStyle(() => {
+    const ring1Style = useAnimatedStyle(() => {
         return {
-            transform: [{ rotate: `${rotation.value}deg` }, { scale: scale.value }],
+            transform: [{ rotate: `${rotation1.value}deg` }, { scale: scale.value }],
         };
     });
 
-    const textStyle = useAnimatedStyle(() => {
+    const ring2Style = useAnimatedStyle(() => {
         return {
-            opacity: textOpacity.value,
+            transform: [{ rotate: `${rotation2.value}deg` }, { scale: scale.value }],
         };
     });
 
     return (
         <View className="flex-1 justify-start items-center pt-20 absolute inset-0 z-20" pointerEvents="none">
-            <View className="relative w-64 h-64 justify-center items-center">
-                {/* Orb 1 */}
+            <View className="relative w-48 h-48 justify-center items-center">
+                {/* Outer ring - Blue */}
                 <Animated.View
-                    className="absolute w-16 h-16 rounded-full bg-blue-500/60 blur-xl"
-                    style={[animatedStyle, { transform: [{ rotate: `${rotation.value}deg` }, { translateX: 50 }] }]}
+                    className="absolute inset-0 border-2 border-blue-400/30 rounded-full"
+                    style={[ring1Style, { shadowColor: '#3b82f6', shadowOpacity: 0.2, shadowRadius: 30 }]}
                 />
-                {/* Orb 2 */}
+                {/* Inner ring - Purple */}
                 <Animated.View
-                    className="absolute w-16 h-16 rounded-full bg-purple-500/60 blur-xl"
-                    style={[animatedStyle, { transform: [{ rotate: `${rotation.value}deg` }, { translateX: -50 }] }]}
+                    className="absolute inset-8 border-2 border-purple-400/30 rounded-full"
+                    style={[ring2Style, { shadowColor: '#a855f7', shadowOpacity: 0.2, shadowRadius: 30 }]}
                 />
 
                 {/* Center Core */}
-                <View className="w-4 h-4 bg-white rounded-full shadow-lg shadow-white" />
+                <View className="w-2 h-2 bg-white/40 rounded-full" 
+                      style={{ shadowColor: '#ffffff', shadowOpacity: 0.5, shadowRadius: 10 }} />
             </View>
         </View>
     );
