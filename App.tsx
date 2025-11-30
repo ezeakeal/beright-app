@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import { SwirlingLoader } from "./components/SwirlingLoader";
 import { InfoModal } from "./components/InfoModal";
 import { LoginModal } from "./components/LoginModal";
+import { ConversationListenerButton } from "./components/ConversationListenerButton";
 import { analyzeConflictStaged, AnalysisResult, getRandomFruitPair, StageResult } from "./utils/gemini";
 import { saveConversation, getPastConversations, StoredConversation } from "./utils/storage";
 import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withTiming, interpolateColor } from "react-native-reanimated";
@@ -289,12 +290,42 @@ function AppContent() {
             {appState === "TOPIC" && (
               <Animated.View entering={FadeIn} className="flex-1 p-6">
                 <Text className="text-3xl font-bold text-slate-800 mb-4 text-center">What is the topic?</Text>
+                
+                {/* Listen In Feature */}
+                <ConversationListenerButton
+                  onConversationExtracted={(data) => {
+                    // Auto-fill the form
+                    setTopic(data.topic);
+                    setOpinionA(data.viewpointA);
+                    setOpinionB(data.viewpointB);
+                    
+                    const [fA, fB] = getRandomFruitPair();
+                    setFruitA(fA);
+                    setFruitB(fB);
+                    
+                    // Show a confirmation and go to INPUT with pre-filled data
+                    setAppState("INPUT");
+                    
+                    Alert.alert(
+                      'Conversation Extracted! ✨',
+                      `Topic: ${data.topic}\n\nReview and edit the viewpoints if needed.`,
+                      [{ text: 'Review', style: 'default' }]
+                    );
+                  }}
+                />
+                
+                {/* Divider */}
+                <View className="flex-row items-center my-6">
+                  <View className="flex-1 h-px bg-slate-300" />
+                  <Text className="mx-4 text-slate-500 font-medium">OR</Text>
+                  <View className="flex-1 h-px bg-slate-300" />
+                </View>
+                
                 <TextInput
                   className="bg-white/80 p-6 rounded-3xl text-2xl text-center shadow-sm border border-white/50"
                   placeholder="e.g., Climate Change"
                   value={topic}
                   onChangeText={setTopic}
-                  autoFocus
                   onSubmitEditing={handleTopicSubmit}
                   returnKeyType="next"
                 />

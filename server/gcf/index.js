@@ -71,6 +71,81 @@ exports.generateText = async (req, res) => {
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
 
+    // Handle audio transcription and extraction action
+    if (action === 'transcribeAndExtract') {
+      const { audioData, mimeType } = payload;
+      
+      // Tiered API keys (optional). Fallback to GEMINI_API_KEY if tiered keys are not set.
+      const apiKey =
+        tier === 'pro'
+          ? (process.env.GEMINI_API_KEY_PRO || process.env.GEMINI_API_KEY)
+          : (process.env.GEMINI_API_KEY_FREE || process.env.GEMINI_API_KEY);
+      
+      // Use Gemini model with audio support
+      const model = tier === 'pro' || tier === 'subscribed'
+        ? 'gemini-2.5-flash' 
+        : 'gemini-2.5-flash';
+      
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      
+      const geminiPayload = {
+        contents: [{
+          role: 'user',
+          parts: [
+            {
+              inline_data: {
+                mime_type: mimeType,
+                data: audioData
+              }
+            },
+            {
+              text: `Listen to this conversation recording and extract the following information:
+
+1. The main TOPIC being discussed
+2. Two distinct VIEWPOINTS or perspectives being debated
+3. A full transcript of the conversation
+
+Important:
+- If there are more than 2 speakers, identify the 2 most prominent opposing viewpoints
+- Each viewpoint should be a clear, concise statement (1-2 sentences)
+- If the conversation is unclear or has only one viewpoint, indicate low confidence
+
+Return ONLY a JSON object with this exact structure:
+{
+  "topic": "The main subject being discussed",
+  "viewpointA": "First perspective or position",
+  "viewpointB": "Second, opposing perspective or position",
+  "transcript": "Full conversation transcript with speaker labels if possible",
+  "confidence": "high" | "medium" | "low"
+}`
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 8192,
+        }
+      };
+      
+      const geminiResponse = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(geminiPayload)
+      });
+      
+      const data = await geminiResponse.json();
+      
+      if (!data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        throw new Error('Failed to get response from Gemini');
+      }
+      
+      const text = data.candidates[0].content.parts[0].text;
+      const clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      
+      return res.json(parsed);
+    }
+
     const finalPrompt = prompt ?? buildPromptFromAction(action, payload);
 
     // Tiered API keys (optional). Fallback to GEMINI_API_KEY if tiered keys are not set.
