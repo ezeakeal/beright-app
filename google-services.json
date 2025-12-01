@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "1021561698058-6o5ajvrv19p5vddi6o7ga4m4mhtbpj59.apps.googleusercontent.com",
+          "client_id": "1021561698058-ll52hathk3avij310ji1jptmjcvjp8u0.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.vadix.berightapp",
-            "certificate_hash": "a08d2b78f059b83d82c93beb3201c26869fff014"
+            "certificate_hash": "848e2b5165295f4ec220dd6bedfbfea1a69e7e08"
           }
         },
         {

@@ -224,18 +224,28 @@ function AppContent() {
 
                 <TouchableOpacity
                   onPress={startNewConversation}
-                  className="border-2 border-blue-400/50 px-10 py-6 rounded-full active:scale-95 transform transition mb-4"
-                  style={{ shadowColor: '#3b82f6', shadowOpacity: 0.3, shadowRadius: 20 }}
+                  className="border-2 border-blue-500 px-10 py-6 rounded-full active:scale-95 transform transition mb-4"
+                  style={{ 
+                    shadowColor: '#3b82f6', 
+                    shadowOpacity: 0.6, 
+                    shadowRadius: 25,
+                    backgroundColor: 'rgba(59, 130, 246, 0.15)'
+                  }}
                 >
-                  <Text className="text-white/90 text-2xl font-bold">New Conversation</Text>
+                  <Text className="text-white text-2xl font-bold">New Conversation</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={openHistory}
-                  className="border border-zinc-700/50 px-8 py-4 rounded-full active:scale-95 transform transition mb-8"
-                  style={{ shadowColor: '#ffffff', shadowOpacity: 0.05, shadowRadius: 15 }}
+                  className="border-2 border-purple-500/70 px-8 py-4 rounded-full active:scale-95 transform transition mb-8"
+                  style={{ 
+                    shadowColor: '#a855f7', 
+                    shadowOpacity: 0.4, 
+                    shadowRadius: 20,
+                    backgroundColor: 'rgba(168, 85, 247, 0.1)'
+                  }}
                 >
-                  <Text className="text-zinc-400 text-lg font-bold">Past Conversations</Text>
+                  <Text className="text-purple-300 text-lg font-bold">Past Conversations</Text>
                 </TouchableOpacity>
 
                 {/* Login Status Button */}
@@ -336,10 +346,15 @@ function AppContent() {
                 />
                 <TouchableOpacity
                   onPress={handleTopicSubmit}
-                  className="mt-4 border-2 border-white/30 self-center px-8 py-4 rounded-full"
-                  style={{ shadowColor: '#ffffff', shadowOpacity: 0.15, shadowRadius: 15 }}
+                  className="mt-4 border-2 border-cyan-500 self-center px-8 py-4 rounded-full"
+                  style={{ 
+                    shadowColor: '#06b6d4', 
+                    shadowOpacity: 0.5, 
+                    shadowRadius: 20,
+                    backgroundColor: 'rgba(6, 182, 212, 0.15)'
+                  }}
                 >
-                  <Text className="text-white/90 font-bold text-lg">Next</Text>
+                  <Text className="text-cyan-200 font-bold text-lg">Next</Text>
                 </TouchableOpacity>
 
                 {/* Sample Topics */}
@@ -386,10 +401,16 @@ function AppContent() {
                   <View className="absolute top-1/2 left-0 right-0 -mt-8 items-center z-10">
                     <TouchableOpacity
                       onPress={handleResolve}
-                      className="border-2 border-blue-400/50 bg-black/40 px-8 py-4 rounded-full"
-                      style={{ shadowColor: '#3b82f6', shadowOpacity: 0.4, shadowRadius: 25 }}
+                      className="border-3 border-emerald-500 bg-black/50 px-8 py-4 rounded-full"
+                      style={{ 
+                        shadowColor: '#10b981', 
+                        shadowOpacity: 0.7, 
+                        shadowRadius: 30,
+                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                        borderWidth: 3
+                      }}
                     >
-                      <Text className="text-white/90 font-bold text-lg tracking-wider">RESOLVE</Text>
+                      <Text className="text-emerald-200 font-bold text-lg tracking-wider">ALL RIGHT</Text>
                     </TouchableOpacity>
                   </View>
 
@@ -473,10 +494,16 @@ function AppContent() {
                         setOpinionB(previousOpinionB + "\n\nAdditional context: " + followUpB);
                         handleResolve();
                       }}
-                      className="border-2 border-blue-400/50 bg-black/40 px-8 py-4 rounded-full"
-                      style={{ shadowColor: '#3b82f6', shadowOpacity: 0.4, shadowRadius: 25 }}
+                      className="border-3 border-amber-500 bg-black/50 px-8 py-4 rounded-full"
+                      style={{ 
+                        shadowColor: '#f59e0b', 
+                        shadowOpacity: 0.7, 
+                        shadowRadius: 30,
+                        backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                        borderWidth: 3
+                      }}
                     >
-                      <Text className="text-white/90 font-bold text-lg tracking-wider">CONTINUE</Text>
+                      <Text className="text-amber-200 font-bold text-lg tracking-wider">CONTINUE</Text>
                     </TouchableOpacity>
                   </View>
 
@@ -538,13 +565,27 @@ function AppContent() {
                     <View className="flex-row justify-center space-x-4 mt-4">
                       <TouchableOpacity
                         onPress={() => Speech.speak(result.narration, { rate: 0.85, pitch: 1.05, language: 'en-US' })}
-                        className="border border-blue-400/50 px-6 py-2 rounded-full"
-                        style={{ shadowColor: '#3b82f6', shadowOpacity: 0.2, shadowRadius: 15 }}
+                        className="border-2 border-blue-500 px-6 py-2 rounded-full"
+                        style={{ 
+                          shadowColor: '#3b82f6', 
+                          shadowOpacity: 0.5, 
+                          shadowRadius: 20,
+                          backgroundColor: 'rgba(59, 130, 246, 0.15)'
+                        }}
                       >
-                        <Text className="text-white/90 font-bold">🔊 Play</Text>
+                        <Text className="text-blue-200 font-bold">🔊 Play</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={stopAudio} className="border border-zinc-700/50 px-6 py-2 rounded-full">
-                        <Text className="text-zinc-400 font-bold">Stop</Text>
+                      <TouchableOpacity 
+                        onPress={stopAudio} 
+                        className="border-2 border-zinc-600 px-6 py-2 rounded-full"
+                        style={{ 
+                          shadowColor: '#71717a', 
+                          shadowOpacity: 0.3, 
+                          shadowRadius: 15,
+                          backgroundColor: 'rgba(113, 113, 122, 0.1)'
+                        }}
+                      >
+                        <Text className="text-zinc-300 font-bold">Stop</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -600,16 +641,27 @@ function AppContent() {
                   <View className="flex-row justify-between mb-8 space-x-3">
                     <TouchableOpacity
                       onPress={handleFollowUp}
-                      className="flex-1 border-2 border-blue-400/50 py-4 rounded-2xl"
-                      style={{ shadowColor: '#3b82f6', shadowOpacity: 0.2, shadowRadius: 15 }}
+                      className="flex-1 border-2 border-indigo-500 py-4 rounded-2xl"
+                      style={{ 
+                        shadowColor: '#6366f1', 
+                        shadowOpacity: 0.5, 
+                        shadowRadius: 20,
+                        backgroundColor: 'rgba(99, 102, 241, 0.15)'
+                      }}
                     >
-                      <Text className="text-white/90 text-center font-bold text-lg">Follow Up</Text>
+                      <Text className="text-indigo-200 text-center font-bold text-lg">Follow Up</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => { stopAudio(); setAppState("HOME"); }}
-                      className="flex-1 border border-zinc-700/50 py-4 rounded-2xl"
+                      className="flex-1 border-2 border-zinc-600 py-4 rounded-2xl"
+                      style={{ 
+                        shadowColor: '#71717a', 
+                        shadowOpacity: 0.3, 
+                        shadowRadius: 15,
+                        backgroundColor: 'rgba(113, 113, 122, 0.1)'
+                      }}
                     >
-                      <Text className="text-zinc-400 text-center font-bold text-lg">Start Over</Text>
+                      <Text className="text-zinc-300 text-center font-bold text-lg">Start Over</Text>
                     </TouchableOpacity>
                   </View>
                 </Animated.View>
