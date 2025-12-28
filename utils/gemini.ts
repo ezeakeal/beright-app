@@ -1,6 +1,6 @@
 import { searchDuckDuckGo, SearchResult } from "./duckduckgo";
 import { fetchPageContent } from "./scraper";
-import { ensureSignedIn } from "../firebaseClient";
+import { getDeviceId } from "./deviceId";
 
 // Replace with your deployed Cloud Function URL (HTTP trigger) for text generation
 const GCF_TEXT_URL = "https://beright-app-1021561698058.europe-west1.run.app";
@@ -56,12 +56,12 @@ type ServerAction =
     | "final";
 
 const postModel = async (body: Record<string, any>): Promise<any> => {
-    const idToken = await ensureSignedIn();
+    const deviceId = await getDeviceId();
     const res = await fetch(GCF_TEXT_URL, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${idToken}`,
+            "X-Device-Id": deviceId,
         },
         body: JSON.stringify(body),
     });
@@ -69,6 +69,9 @@ const postModel = async (body: Record<string, any>): Promise<any> => {
     const bodyText = await res.text();
 
     if (!res.ok) {
+        if (res.status === 402) {
+            throw new Error("NO_CREDITS");
+        }
         if (res.status === 429) {
             throw new Error("RATE_LIMIT_EXCEEDED");
         }

@@ -1,6 +1,6 @@
 import "./global.css";
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Linking, Alert } from "react-native";
+import { View, Text, TouchableOpacity, TextInput, ScrollView, Linking, Alert, BackHandler, AppState } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
@@ -8,6 +8,7 @@ import { SwirlingLoader } from "./components/SwirlingLoader";
 import { InfoModal } from "./components/InfoModal";
 import { LoginModal } from "./components/LoginModal";
 import { ConversationListenerButton } from "./components/ConversationListenerButton";
+import { PerspectiveInputModal } from "./components/PerspectiveInputModal";
 import { analyzeConflictStaged, AnalysisResult, getRandomFruitPair, StageResult } from "./utils/gemini";
 import { saveConversation, getPastConversations, StoredConversation } from "./utils/storage";
 import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
@@ -15,7 +16,17 @@ import * as Speech from "expo-speech";
 import sampleTopics from "./data/sampleTopics.json";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
-type AppState = "HOME" | "TOPIC" | "INPUT" | "ANALYZING" | "RESULTS" | "FOLLOWUP" | "HISTORY";
+type ScreenState = "HOME" | "TOPIC" | "INPUT" | "ANALYZING" | "RESULTS" | "FOLLOWUP" | "HISTORY";
+type Credits = {
+  deviceId: string;
+  today: string;
+  paidCredits: number;
+  freeAvailable: boolean;
+  deviceFreeRemainingToday: number;
+  freePoolRemaining: number;
+  unitPriceCents: number;
+  currency: string;
+};
 
 export default function App() {
   return (
@@ -26,7 +37,7 @@ export default function App() {
 }
 
 function AppContent() {
-  const [appState, setAppState] = useState<AppState>("HOME");
+  const [appState, setAppState] = useState<ScreenState>("HOME");
   const [topic, setTopic] = useState("");
   const [opinionA, setOpinionA] = useState("");
   const [opinionB, setOpinionB] = useState("");
@@ -34,7 +45,8 @@ function AppContent() {
   const [history, setHistory] = useState<StoredConversation[]>([]);
   const [showInfo, setShowInfo] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-  const { user, userTier } = useAuth();
+  const [editingPerspective, setEditingPerspective] = useState<"A" | "B" | null>(null);
+  const { deviceId } = useAuth();
 
   const [fruitA, setFruitA] = useState<{ name: string; emoji: string } | null>(null);
   const [fruitB, setFruitB] = useState<{ name: string; emoji: string } | null>(null);
@@ -58,9 +70,105 @@ function AppContent() {
     };
   });
 
+  const resolveRunId = React.useRef(0);
+  const SERVER_URL = "https://beright-app-1021561698058.europe-west1.run.app";
+  const [credits, setCredits] = useState<Credits | null>(null);
+  const [creditsNonce, setCreditsNonce] = useState(0);
+
   React.useEffect(() => {
     analyzingFade.value = withTiming(appState === "ANALYZING" ? 0.6 : 0, { duration: 600 });
   }, [appState]);
+
+  const stopAudio = () => {
+    Speech.stop();
+  };
+
+  const goHome = () => {
+    // Invalidate any in-flight analysis so it can't "pop" you back into RESULTS after backing out.
+    resolveRunId.current += 1;
+    stopAudio();
+    setEditingPerspective(null);
+    setAppState("HOME");
+    setCreditsNonce((n) => n + 1);
+  };
+
+  const refreshCredits = React.useCallback(async () => {
+    if (!deviceId) return;
+    const res = await fetch(SERVER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Device-Id": deviceId,
+      },
+      body: JSON.stringify({ action: "credits" }),
+    });
+    const body = await res.text();
+    if (!res.ok) {
+      throw new Error(`Credits endpoint HTTP ${res.status} ${res.statusText}. Body: ${body}`);
+    }
+    const parsed = JSON.parse(body);
+    setCredits(parsed.credits);
+  }, [deviceId]);
+
+  const startTopUp = React.useCallback(async () => {
+    if (!deviceId) return;
+    const res = await fetch(SERVER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Device-Id": deviceId,
+      },
+      body: JSON.stringify({ action: "createCheckoutSession" }),
+    });
+    const body = await res.text();
+    if (!res.ok) {
+      throw new Error(`Checkout session HTTP ${res.status} ${res.statusText}. Body: ${body}`);
+    }
+    const parsed = JSON.parse(body);
+    await Linking.openURL(parsed.url);
+  }, [deviceId]);
+
+  React.useEffect(() => {
+    refreshCredits();
+  }, [refreshCredits, creditsNonce]);
+
+  React.useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        refreshCredits();
+      }
+    });
+    return () => sub.remove();
+  }, [refreshCredits]);
+
+  React.useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      // Close transient UI first.
+      if (showInfo) {
+        setShowInfo(false);
+        return true;
+      }
+      if (showLogin) {
+        setShowLogin(false);
+        return true;
+      }
+      if (editingPerspective) {
+        setEditingPerspective(null);
+        return true;
+      }
+
+      // From any non-home "screen", back returns to HOME (instead of exiting the app).
+      if (appState !== "HOME") {
+        goHome();
+        return true;
+      }
+
+      // On HOME, allow default OS behavior (exit / minimize).
+      return false;
+    });
+
+    return () => sub.remove();
+  }, [appState, editingPerspective, showInfo, showLogin]);
 
   const startNewConversation = () => {
     setTopic("");
@@ -118,6 +226,7 @@ function AppContent() {
 
   const handleResolve = async () => {
     if (!opinionA.trim() || !opinionB.trim() || !fruitA || !fruitB) return;
+    const myRunId = ++resolveRunId.current;
     setAppState("ANALYZING");
     setStageResults([]);
 
@@ -137,6 +246,7 @@ function AppContent() {
         fruitA,
         fruitB,
         (stage, prog, stageResult) => {
+          if (resolveRunId.current !== myRunId) return;
           setCurrentStage(stage);
           setProgress(prog);
 
@@ -153,6 +263,7 @@ function AppContent() {
         previousOpinionA && result ? result : undefined // Pass previous analysis if this is a follow-up
       );
 
+      if (resolveRunId.current !== myRunId) return;
       setResult(analysis);
       
       // Save to history
@@ -165,10 +276,12 @@ function AppContent() {
         fruitB: fruitB!
       });
 
+      if (resolveRunId.current !== myRunId) return;
       setAppState("RESULTS");
 
       // Final narration
       setTimeout(() => {
+        if (resolveRunId.current !== myRunId) return;
         Speech.speak(analysis.narration, {
           rate: 0.85,
           pitch: 1.05,
@@ -178,6 +291,15 @@ function AppContent() {
 
     } catch (error: any) {
       console.error(error);
+      if (error.message === "NO_CREDITS") {
+        Alert.alert(
+          "No Requests Available",
+          "You have no free requests available and your paid balance is 0. Please top up to continue.",
+          [{ text: "Top up", onPress: startTopUp }, { text: "Cancel", style: "cancel" }]
+        );
+        setAppState("INPUT");
+        return;
+      }
       if (error.message === "RATE_LIMIT_EXCEEDED") {
         Alert.alert(
           "Too Many Requests",
@@ -189,10 +311,6 @@ function AppContent() {
       }
       setAppState("INPUT");
     }
-  };
-
-  const stopAudio = () => {
-    Speech.stop();
   };
 
   return (
@@ -221,6 +339,44 @@ function AppContent() {
 
                 <Text className="text-5xl font-bold text-white/90 mb-2 text-center">B'right</Text>
                 <Text className="text-xl text-zinc-400 mb-12 text-center">Find harmony in conflict.</Text>
+
+                <View className="w-full max-w-[420px] bg-black/60 border border-zinc-800/50 p-5 rounded-3xl mb-8"
+                      style={{ shadowColor: '#3b82f6', shadowOpacity: 0.06, shadowRadius: 18 }}>
+                  <Text className="text-zinc-500 font-bold uppercase tracking-widest text-xs mb-2">Requests</Text>
+                  {credits ? (
+                    <>
+                      <Text className={`text-lg font-bold ${credits.freeAvailable ? 'text-emerald-200/90' : 'text-amber-200/90'}`}>
+                        {credits.freeAvailable ? "Free request available today" : "No free requests available"}
+                      </Text>
+                      <Text className="text-zinc-400 mt-1">
+                        Paid balance: <Text className="text-white/80 font-bold">{credits.paidCredits}</Text>
+                      </Text>
+                      {!credits.freeAvailable && credits.paidCredits === 0 && (
+                        <TouchableOpacity
+                          onPress={startTopUp}
+                          className="mt-4 border-2 border-amber-500/70 px-6 py-4 rounded-2xl"
+                          style={{
+                            shadowColor: '#f59e0b',
+                            shadowOpacity: 0.35,
+                            shadowRadius: 18,
+                            backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                          }}
+                        >
+                          <Text className="text-amber-200 text-center font-bold text-lg">
+                            Top up (€0.20 / request)
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                      {credits.freePoolRemaining === 0 && (
+                        <Text className="text-zinc-500 text-xs mt-3">
+                          Free pool exhausted (100 total). Top up required.
+                        </Text>
+                      )}
+                    </>
+                  ) : (
+                    <Text className="text-zinc-500">Loading…</Text>
+                  )}
+                </View>
 
                 <TouchableOpacity
                   onPress={startNewConversation}
@@ -254,10 +410,9 @@ function AppContent() {
                   className="border border-zinc-800/50 px-6 py-3 rounded-full flex-row items-center"
                   style={{ shadowColor: '#ffffff', shadowOpacity: 0.03, shadowRadius: 10 }}
                 >
-                  <View className={`w-3 h-3 rounded-full mr-2 ${user && !user.isAnonymous ? 'bg-emerald-500/70' : 'bg-zinc-600'}`} 
-                        style={user && !user.isAnonymous ? { shadowColor: '#10b981', shadowOpacity: 0.5, shadowRadius: 8 } : {}} />
+                  <View className="w-3 h-3 rounded-full mr-2 bg-zinc-600" />
                   <Text className="text-zinc-500 font-medium">
-                    {user && !user.isAnonymous ? `Signed in (${userTier})` : "Anonymous User"}
+                    {deviceId ? `Device: ${deviceId.slice(0, 8)}…` : "Device: Loading…"}
                   </Text>
                 </TouchableOpacity>
               </Animated.View>
@@ -266,7 +421,7 @@ function AppContent() {
             {appState === "HISTORY" && (
               <Animated.View entering={FadeIn} className="flex-1 p-6 pt-12">
                 <View className="flex-row items-center mb-6">
-                  <TouchableOpacity onPress={() => setAppState("HOME")} className="mr-4 p-2 border border-zinc-700/50 rounded-full">
+                  <TouchableOpacity onPress={goHome} className="mr-4 p-2 border border-zinc-700/50 rounded-full">
                     <Text className="text-2xl text-white/70">←</Text>
                   </TouchableOpacity>
                   <Text className="text-3xl font-bold text-white/90">Past Conversations</Text>
@@ -303,7 +458,14 @@ function AppContent() {
 
             {appState === "TOPIC" && (
               <Animated.View entering={FadeIn} className="flex-1 p-6">
-                <Text className="text-3xl font-bold text-white/90 mb-4 text-center">What is the topic?</Text>
+                <View className="flex-row items-center mb-4">
+                  <TouchableOpacity onPress={goHome} className="mr-4 p-2 border border-zinc-700/50 rounded-full">
+                    <Text className="text-2xl text-white/70">←</Text>
+                  </TouchableOpacity>
+                  <View className="flex-1 pr-10">
+                    <Text className="text-3xl font-bold text-white/90 text-center">What is the topic?</Text>
+                  </View>
+                </View>
                 
                 {/* Listen In Feature */}
                 <ConversationListenerButton
@@ -376,62 +538,101 @@ function AppContent() {
             )}
 
             {appState === "INPUT" && fruitA && fruitB && (
-              <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                className="flex-1"
-              >
-                <View className="flex-1 relative">
-                  <View className="flex-1 rotate-180 p-4">
-                    <View className="flex-1 bg-black/70 border border-purple-900/40 rounded-3xl p-6"
-                          style={{ shadowColor: '#a855f7', shadowOpacity: 0.15, shadowRadius: 20 }}>
-                      <Text className="text-lg font-bold text-purple-300/70 mb-2 text-center">
-                        Perspective {fruitA.name} {fruitA.emoji}
-                      </Text>
-                      <TextInput
-                        className="flex-1 text-xl text-white/80 text-center"
-                        multiline
-                        placeholder="Type your view..."
-                        placeholderTextColor="#52525b"
-                        value={opinionA}
-                        onChangeText={setOpinionA}
-                      />
-                    </View>
-                  </View>
-
-                  <View className="absolute top-1/2 left-0 right-0 -mt-8 items-center z-10">
-                    <TouchableOpacity
-                      onPress={handleResolve}
-                      className="border-3 border-emerald-500 bg-black/50 px-8 py-4 rounded-full"
-                      style={{ 
-                        shadowColor: '#10b981', 
-                        shadowOpacity: 0.7, 
-                        shadowRadius: 30,
-                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                        borderWidth: 3
-                      }}
-                    >
-                      <Text className="text-emerald-200 font-bold text-lg tracking-wider">ALL RIGHT</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View className="flex-1 p-4">
-                    <View className="flex-1 bg-black/70 border border-cyan-900/40 rounded-3xl p-6"
-                          style={{ shadowColor: '#22d3ee', shadowOpacity: 0.15, shadowRadius: 20 }}>
-                      <Text className="text-lg font-bold text-cyan-300/70 mb-2 text-center">
-                        Perspective {fruitB.name} {fruitB.emoji}
-                      </Text>
-                      <TextInput
-                        className="flex-1 text-xl text-white/80 text-center"
-                        multiline
-                        placeholder="Type your view..."
-                        placeholderTextColor="#52525b"
-                        value={opinionB}
-                        onChangeText={setOpinionB}
-                      />
-                    </View>
-                  </View>
+              <View className="flex-1 relative">
+                {/* Top half - Perspective A (rotated) */}
+                <View className="flex-1 rotate-180 p-4 justify-center items-center">
+                  <TouchableOpacity
+                    onPress={() => setEditingPerspective("A")}
+                    className="bg-black/70 border-2 border-purple-500/40 rounded-3xl p-10 items-center justify-center active:scale-95"
+                    style={{ 
+                      shadowColor: '#a855f7', 
+                      shadowOpacity: 0.3, 
+                      shadowRadius: 30,
+                      minWidth: 280,
+                      minHeight: 280
+                    }}
+                  >
+                    <Text style={{ fontSize: 120 }}>{fruitA.emoji}</Text>
+                    <Text className="text-2xl font-bold text-purple-300/70 mt-4 text-center">
+                      {fruitA.name}
+                    </Text>
+                    {opinionA.trim() && (
+                      <View className="mt-4 bg-purple-900/20 px-4 py-2 rounded-full">
+                        <Text className="text-purple-300/60 text-sm">✓ Perspective Added</Text>
+                      </View>
+                    )}
+                    <Text className="text-zinc-500 text-sm mt-3 text-center">
+                      Tap to {opinionA.trim() ? 'edit' : 'add'} perspective
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              </KeyboardAvoidingView>
+
+                {/* Center button */}
+                <View className="absolute top-1/2 left-0 right-0 -mt-8 items-center z-10">
+                  <TouchableOpacity
+                    onPress={handleResolve}
+                    disabled={!opinionA.trim() || !opinionB.trim()}
+                    className="border-3 border-emerald-500 bg-black/50 px-8 py-4 rounded-full disabled:opacity-40"
+                    style={{ 
+                      shadowColor: '#10b981', 
+                      shadowOpacity: 0.7, 
+                      shadowRadius: 30,
+                      backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                      borderWidth: 3
+                    }}
+                  >
+                    <Text className="text-emerald-200 font-bold text-lg tracking-wider">ALL RIGHT</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Bottom half - Perspective B */}
+                <View className="flex-1 p-4 justify-center items-center">
+                  <TouchableOpacity
+                    onPress={() => setEditingPerspective("B")}
+                    className="bg-black/70 border-2 border-cyan-500/40 rounded-3xl p-10 items-center justify-center active:scale-95"
+                    style={{ 
+                      shadowColor: '#22d3ee', 
+                      shadowOpacity: 0.3, 
+                      shadowRadius: 30,
+                      minWidth: 280,
+                      minHeight: 280
+                    }}
+                  >
+                    <Text style={{ fontSize: 120 }}>{fruitB.emoji}</Text>
+                    <Text className="text-2xl font-bold text-cyan-300/70 mt-4 text-center">
+                      {fruitB.name}
+                    </Text>
+                    {opinionB.trim() && (
+                      <View className="mt-4 bg-cyan-900/20 px-4 py-2 rounded-full">
+                        <Text className="text-cyan-300/60 text-sm">✓ Perspective Added</Text>
+                      </View>
+                    )}
+                    <Text className="text-zinc-500 text-sm mt-3 text-center">
+                      Tap to {opinionB.trim() ? 'edit' : 'add'} perspective
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Modals */}
+                <PerspectiveInputModal
+                  visible={editingPerspective === "A"}
+                  emoji={fruitA.emoji}
+                  fruitName={fruitA.name}
+                  color="purple"
+                  initialValue={opinionA}
+                  onSave={setOpinionA}
+                  onClose={() => setEditingPerspective(null)}
+                />
+                <PerspectiveInputModal
+                  visible={editingPerspective === "B"}
+                  emoji={fruitB.emoji}
+                  fruitName={fruitB.name}
+                  color="cyan"
+                  initialValue={opinionB}
+                  onSave={setOpinionB}
+                  onClose={() => setEditingPerspective(null)}
+                />
+              </View>
             )}
 
             {appState === "ANALYZING" && (
@@ -465,66 +666,110 @@ function AppContent() {
             )}
 
             {appState === "FOLLOWUP" && fruitA && fruitB && (
-              <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                className="flex-1"
-              >
-                <View className="flex-1 relative">
-                  <View className="flex-1 rotate-180 p-4">
-                    <View className="flex-1 bg-black/70 border border-purple-900/40 rounded-3xl p-6"
-                          style={{ shadowColor: '#a855f7', shadowOpacity: 0.15, shadowRadius: 20 }}>
-                      <Text className="text-lg font-bold text-purple-300/70 mb-2 text-center">
-                        {fruitA.name} {fruitA.emoji} - Add More Details
-                      </Text>
-                      <TextInput
-                        className="flex-1 text-xl text-white/80 text-center"
-                        multiline
-                        placeholder="Add more context or details..."
-                        placeholderTextColor="#52525b"
-                        value={followUpA}
-                        onChangeText={setFollowUpA}
-                      />
-                    </View>
-                  </View>
-
-                  <View className="absolute top-1/2 left-0 right-0 -mt-8 items-center z-10">
-                    <TouchableOpacity
-                      onPress={() => {
-                        setOpinionA(previousOpinionA + "\n\nAdditional context: " + followUpA);
-                        setOpinionB(previousOpinionB + "\n\nAdditional context: " + followUpB);
-                        handleResolve();
-                      }}
-                      className="border-3 border-amber-500 bg-black/50 px-8 py-4 rounded-full"
-                      style={{ 
-                        shadowColor: '#f59e0b', 
-                        shadowOpacity: 0.7, 
-                        shadowRadius: 30,
-                        backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                        borderWidth: 3
-                      }}
-                    >
-                      <Text className="text-amber-200 font-bold text-lg tracking-wider">CONTINUE</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View className="flex-1 p-4">
-                    <View className="flex-1 bg-black/70 border border-cyan-900/40 rounded-3xl p-6"
-                          style={{ shadowColor: '#22d3ee', shadowOpacity: 0.15, shadowRadius: 20 }}>
-                      <Text className="text-lg font-bold text-cyan-300/70 mb-2 text-center">
-                        {fruitB.name} {fruitB.emoji} - Add More Details
-                      </Text>
-                      <TextInput
-                        className="flex-1 text-xl text-white/80 text-center"
-                        multiline
-                        placeholder="Add more context or details..."
-                        placeholderTextColor="#52525b"
-                        value={followUpB}
-                        onChangeText={setFollowUpB}
-                      />
-                    </View>
-                  </View>
+              <View className="flex-1 relative">
+                {/* Top half - Perspective A (rotated) */}
+                <View className="flex-1 rotate-180 p-4 justify-center items-center">
+                  <TouchableOpacity
+                    onPress={() => setEditingPerspective("A")}
+                    className="bg-black/70 border-2 border-purple-500/40 rounded-3xl p-10 items-center justify-center active:scale-95"
+                    style={{ 
+                      shadowColor: '#a855f7', 
+                      shadowOpacity: 0.3, 
+                      shadowRadius: 30,
+                      minWidth: 280,
+                      minHeight: 280
+                    }}
+                  >
+                    <Text style={{ fontSize: 120 }}>{fruitA.emoji}</Text>
+                    <Text className="text-2xl font-bold text-purple-300/70 mt-4 text-center">
+                      {fruitA.name}
+                    </Text>
+                    <Text className="text-sm text-purple-400/60 mt-2 text-center">
+                      Add More Details
+                    </Text>
+                    {followUpA.trim() && (
+                      <View className="mt-4 bg-purple-900/20 px-4 py-2 rounded-full">
+                        <Text className="text-purple-300/60 text-sm">✓ Details Added</Text>
+                      </View>
+                    )}
+                    <Text className="text-zinc-500 text-sm mt-3 text-center">
+                      Tap to {followUpA.trim() ? 'edit' : 'add'} context
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-              </KeyboardAvoidingView>
+
+                {/* Center button */}
+                <View className="absolute top-1/2 left-0 right-0 -mt-8 items-center z-10">
+                  <TouchableOpacity
+                    onPress={() => {
+                      setOpinionA(previousOpinionA + "\n\nAdditional context: " + followUpA);
+                      setOpinionB(previousOpinionB + "\n\nAdditional context: " + followUpB);
+                      handleResolve();
+                    }}
+                    className="border-3 border-amber-500 bg-black/50 px-8 py-4 rounded-full"
+                    style={{ 
+                      shadowColor: '#f59e0b', 
+                      shadowOpacity: 0.7, 
+                      shadowRadius: 30,
+                      backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                      borderWidth: 3
+                    }}
+                  >
+                    <Text className="text-amber-200 font-bold text-lg tracking-wider">CONTINUE</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Bottom half - Perspective B */}
+                <View className="flex-1 p-4 justify-center items-center">
+                  <TouchableOpacity
+                    onPress={() => setEditingPerspective("B")}
+                    className="bg-black/70 border-2 border-cyan-500/40 rounded-3xl p-10 items-center justify-center active:scale-95"
+                    style={{ 
+                      shadowColor: '#22d3ee', 
+                      shadowOpacity: 0.3, 
+                      shadowRadius: 30,
+                      minWidth: 280,
+                      minHeight: 280
+                    }}
+                  >
+                    <Text style={{ fontSize: 120 }}>{fruitB.emoji}</Text>
+                    <Text className="text-2xl font-bold text-cyan-300/70 mt-4 text-center">
+                      {fruitB.name}
+                    </Text>
+                    <Text className="text-sm text-cyan-400/60 mt-2 text-center">
+                      Add More Details
+                    </Text>
+                    {followUpB.trim() && (
+                      <View className="mt-4 bg-cyan-900/20 px-4 py-2 rounded-full">
+                        <Text className="text-cyan-300/60 text-sm">✓ Details Added</Text>
+                      </View>
+                    )}
+                    <Text className="text-zinc-500 text-sm mt-3 text-center">
+                      Tap to {followUpB.trim() ? 'edit' : 'add'} context
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Modals */}
+                <PerspectiveInputModal
+                  visible={editingPerspective === "A"}
+                  emoji={fruitA.emoji}
+                  fruitName={fruitA.name}
+                  color="purple"
+                  initialValue={followUpA}
+                  onSave={setFollowUpA}
+                  onClose={() => setEditingPerspective(null)}
+                />
+                <PerspectiveInputModal
+                  visible={editingPerspective === "B"}
+                  emoji={fruitB.emoji}
+                  fruitName={fruitB.name}
+                  color="cyan"
+                  initialValue={followUpB}
+                  onSave={setFollowUpB}
+                  onClose={() => setEditingPerspective(null)}
+                />
+              </View>
             )}
 
             {appState === "RESULTS" && result && (

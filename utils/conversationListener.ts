@@ -1,5 +1,5 @@
 import { Audio } from 'expo-av';
-import { ensureSignedIn } from '../firebaseClient';
+import { getDeviceId } from './deviceId';
 import { File } from 'expo-file-system';
 
 const GCF_TEXT_URL = "https://beright-app-1021561698058.europe-west1.run.app";
@@ -54,12 +54,12 @@ export class ConversationListener {
     const audioBase64 = await file.base64();
 
     // Send to Cloud Function for transcription + extraction
-    const idToken = await ensureSignedIn();
+    const deviceId = await getDeviceId();
     const response = await fetch(GCF_TEXT_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${idToken}`,
+        'X-Device-Id': deviceId,
       },
       body: JSON.stringify({
         action: 'transcribeAndExtract',

@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@google-cloud/functions-framework": "^3.4.0",
-    "firebase-admin": "^12.6.0"
+    "firebase-admin": "^12.6.0",
+    "stripe": "^17.7.0"
   }
 }
 
