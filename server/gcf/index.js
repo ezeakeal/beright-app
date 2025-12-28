@@ -74,6 +74,9 @@ async function getCredits(deviceId) {
   const pool = poolSnap.exists ? poolSnap.data() : {};
 
   const paidCredits = Number(device.paidCredits || 0);
+  const paidCreditsPurchased = Number(device.paidCreditsPurchased || 0);
+  const paidCreditsUsed = Number(device.paidCreditsUsed || 0);
+  const freeCreditsUsed = Number(device.freeCreditsUsed || 0);
   const usedFreeCount = Number(pool.usedFreeCount || 0);
   const freePoolRemaining = Math.max(0, FREE_POOL_LIMIT - usedFreeCount);
   const lastFreeDate = String(device.lastFreeDate || '');
@@ -84,6 +87,9 @@ async function getCredits(deviceId) {
     deviceId,
     today,
     paidCredits,
+    paidCreditsPurchased,
+    paidCreditsUsed,
+    freeCreditsUsed,
     freeAvailable,
     deviceFreeRemainingToday,
     freePoolRemaining,
@@ -103,6 +109,8 @@ async function consumeOneRequestCredit(deviceId) {
     const pool = poolSnap.exists ? poolSnap.data() : {};
 
     const paidCredits = Number(device.paidCredits || 0);
+    const paidCreditsUsed = Number(device.paidCreditsUsed || 0);
+    const freeCreditsUsed = Number(device.freeCreditsUsed || 0);
     const usedFreeCount = Number(pool.usedFreeCount || 0);
     const freePoolRemaining = FREE_POOL_LIMIT - usedFreeCount;
 
@@ -115,6 +123,7 @@ async function consumeOneRequestCredit(deviceId) {
         dRef,
         {
           lastFreeDate: today,
+          freeCreditsUsed: freeCreditsUsed + 1,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -135,6 +144,7 @@ async function consumeOneRequestCredit(deviceId) {
         dRef,
         {
           paidCredits: paidCredits - 1,
+          paidCreditsUsed: paidCreditsUsed + 1,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -208,6 +218,84 @@ exports.generateText = async (req, res) => {
       });
 
       return res.json({ ok: true, clientSecret: paymentIntent.client_secret });
+    }
+
+    // Confirm a successful PaymentIntent and credit the device (does not consume)
+    // This makes top-ups deterministic even if webhook delivery is delayed/misconfigured.
+    if ((action || '').toLowerCase() === 'confirmpaymentintent') {
+      const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+      if (!stripeSecretKey) throw new Error('Missing STRIPE_SECRET_KEY');
+      const stripe = new Stripe(stripeSecretKey, { apiVersion: '2024-06-20' });
+
+      const clientSecret = String(payload?.clientSecret || '');
+      if (!clientSecret) {
+        return res.status(400).json({ error: 'Missing clientSecret' });
+      }
+
+      // client_secret format: pi_xxx_secret_yyy
+      const paymentIntentId = clientSecret.split('_secret_')[0];
+      if (!paymentIntentId || !paymentIntentId.startsWith('pi_')) {
+        return res.status(400).json({ error: 'Invalid clientSecret' });
+      }
+
+      const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+      if (!pi) throw new Error('PaymentIntent not found');
+      if (pi.client_secret !== clientSecret) throw new Error('Client secret mismatch');
+      if (pi.status !== 'succeeded') {
+        return res.status(409).json({ error: `PaymentIntent not succeeded (status=${pi.status})` });
+      }
+
+      const piDeviceId = pi?.metadata?.deviceId;
+      const quantity = Number(pi?.metadata?.quantity || 0);
+      if (!piDeviceId) throw new Error('Missing deviceId metadata on payment_intent');
+      if (piDeviceId !== deviceId) throw new Error('Device ID mismatch on payment_intent');
+      if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Invalid quantity metadata on payment_intent');
+      if (String(pi.currency || '').toLowerCase() !== CURRENCY) {
+        throw new Error(`Unexpected currency on payment_intent: ${pi.currency}`);
+      }
+      const expectedAmount = quantity * UNIT_PRICE_CENTS;
+      const received = Number(pi.amount_received ?? pi.amount ?? 0);
+      if (received !== expectedAmount) {
+        throw new Error(`Amount mismatch. expected=${expectedAmount} received=${received}`);
+      }
+
+      await db.runTransaction(async (tx) => {
+        const paymentRef = db.collection('payments').doc(pi.id);
+        const paymentSnap = await tx.get(paymentRef);
+        if (paymentSnap.exists) return;
+
+        const dRef = deviceRef(deviceId);
+        const dSnap = await tx.get(dRef);
+        const device = dSnap.exists ? dSnap.data() : {};
+        const paidCredits = Number(device.paidCredits || 0);
+        const paidCreditsPurchased = Number(device.paidCreditsPurchased || 0);
+
+        tx.set(
+          dRef,
+          {
+            paidCredits: paidCredits + quantity,
+            paidCreditsPurchased: paidCreditsPurchased + quantity,
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        tx.set(
+          paymentRef,
+          {
+            deviceId,
+            quantity,
+            amountTotal: received,
+            currency: String(pi.currency || ''),
+            stripePaymentIntentId: pi.id,
+            source: 'confirmPaymentIntent',
+            createdAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      });
+
+      const credits = await getCredits(deviceId);
+      return res.json({ ok: true, credits });
     }
 
     // Consume exactly 1 request credit for all model actions
@@ -393,10 +481,12 @@ exports.stripeWebhook = async (req, res) => {
       const dSnap = await tx.get(dRef);
       const device = dSnap.exists ? dSnap.data() : {};
       const paidCredits = Number(device.paidCredits || 0);
+      const paidCreditsPurchased = Number(device.paidCreditsPurchased || 0);
       tx.set(
         dRef,
         {
           paidCredits: paidCredits + quantity,
+          paidCreditsPurchased: paidCreditsPurchased + quantity,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -409,6 +499,7 @@ exports.stripeWebhook = async (req, res) => {
           amountTotal: received,
           currency: String(pi.currency || ''),
           stripePaymentIntentId: pi.id,
+          source: 'stripeWebhook',
           createdAt: FieldValue.serverTimestamp(),
         },
         { merge: true }

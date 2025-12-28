@@ -162,7 +162,21 @@ function AppContent() {
         throw new Error(present.error.message);
       }
 
-      // Webhook may take a moment; refresh immediately and once after a short delay.
+      // Credit immediately server-side (idempotent) so the balance updates even if webhook delivery is delayed/misconfigured.
+      const confirmRes = await fetch(SERVER_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Device-Id": deviceId,
+        },
+        body: JSON.stringify({ action: "confirmPaymentIntent", payload: { clientSecret } }),
+      });
+      const confirmBody = await confirmRes.text();
+      if (!confirmRes.ok) {
+        throw new Error(`ConfirmPaymentIntent HTTP ${confirmRes.status} ${confirmRes.statusText}. Body: ${confirmBody}`);
+      }
+
+      // Refresh immediately (and once after a short delay) to keep UI consistent with Firestore write latency.
       await refreshCredits();
       setTimeout(() => refreshCredits(), 1500);
     },
