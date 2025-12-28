@@ -1,6 +1,6 @@
 import "./global.css";
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, TextInput, ScrollView, Linking, Alert, BackHandler, AppState } from "react-native";
+import { View, Text, TouchableOpacity, TextInput, ScrollView, Linking, Alert, BackHandler, AppState as RNAppState, useWindowDimensions } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
@@ -37,6 +37,7 @@ export default function App() {
 }
 
 function AppContent() {
+  const { width: windowWidth } = useWindowDimensions();
   const [appState, setAppState] = useState<ScreenState>("HOME");
   const [topic, setTopic] = useState("");
   const [opinionA, setOpinionA] = useState("");
@@ -74,17 +75,15 @@ function AppContent() {
   const SERVER_URL = "https://beright-app-1021561698058.europe-west1.run.app";
   const [credits, setCredits] = useState<Credits | null>(null);
   const [creditsNonce, setCreditsNonce] = useState(0);
+  const perspectiveCardSize = Math.min(Math.max(windowWidth - 56, 220), 360);
 
   React.useEffect(() => {
     analyzingFade.value = withTiming(appState === "ANALYZING" ? 0.6 : 0, { duration: 600 });
   }, [appState]);
 
-  const stopAudio = () => {
-    Speech.stop();
-  };
+  // (stopAudio is defined earlier)
 
   const goHome = () => {
-    // Invalidate any in-flight analysis so it can't "pop" you back into RESULTS after backing out.
     resolveRunId.current += 1;
     stopAudio();
     setEditingPerspective(null);
@@ -133,7 +132,7 @@ function AppContent() {
   }, [refreshCredits, creditsNonce]);
 
   React.useEffect(() => {
-    const sub = AppState.addEventListener("change", (nextState) => {
+    const sub = RNAppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
         refreshCredits();
       }
@@ -143,7 +142,6 @@ function AppContent() {
 
   React.useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      // Close transient UI first.
       if (showInfo) {
         setShowInfo(false);
         return true;
@@ -156,17 +154,12 @@ function AppContent() {
         setEditingPerspective(null);
         return true;
       }
-
-      // From any non-home "screen", back returns to HOME (instead of exiting the app).
       if (appState !== "HOME") {
         goHome();
         return true;
       }
-
-      // On HOME, allow default OS behavior (exit / minimize).
       return false;
     });
-
     return () => sub.remove();
   }, [appState, editingPerspective, showInfo, showLogin]);
 
@@ -226,7 +219,6 @@ function AppContent() {
 
   const handleResolve = async () => {
     if (!opinionA.trim() || !opinionB.trim() || !fruitA || !fruitB) return;
-    const myRunId = ++resolveRunId.current;
     setAppState("ANALYZING");
     setStageResults([]);
 
@@ -246,7 +238,6 @@ function AppContent() {
         fruitA,
         fruitB,
         (stage, prog, stageResult) => {
-          if (resolveRunId.current !== myRunId) return;
           setCurrentStage(stage);
           setProgress(prog);
 
@@ -263,7 +254,6 @@ function AppContent() {
         previousOpinionA && result ? result : undefined // Pass previous analysis if this is a follow-up
       );
 
-      if (resolveRunId.current !== myRunId) return;
       setResult(analysis);
       
       // Save to history
@@ -276,12 +266,10 @@ function AppContent() {
         fruitB: fruitB!
       });
 
-      if (resolveRunId.current !== myRunId) return;
       setAppState("RESULTS");
 
       // Final narration
       setTimeout(() => {
-        if (resolveRunId.current !== myRunId) return;
         Speech.speak(analysis.narration, {
           rate: 0.85,
           pitch: 1.05,
@@ -291,15 +279,6 @@ function AppContent() {
 
     } catch (error: any) {
       console.error(error);
-      if (error.message === "NO_CREDITS") {
-        Alert.alert(
-          "No Requests Available",
-          "You have no free requests available and your paid balance is 0. Please top up to continue.",
-          [{ text: "Top up", onPress: startTopUp }, { text: "Cancel", style: "cancel" }]
-        );
-        setAppState("INPUT");
-        return;
-      }
       if (error.message === "RATE_LIMIT_EXCEEDED") {
         Alert.alert(
           "Too Many Requests",
@@ -311,6 +290,10 @@ function AppContent() {
       }
       setAppState("INPUT");
     }
+  };
+
+  const stopAudio = () => {
+    Speech.stop();
   };
 
   return (
@@ -326,7 +309,7 @@ function AppContent() {
             <StatusBar style="light" />
 
             {appState === "HOME" && (
-              <Animated.View entering={FadeIn} className="flex-1 justify-center items-center p-6 relative">
+              <Animated.View entering={FadeIn} className="flex-1 p-6 relative">
                 <View className="absolute top-0 right-6" style={{ zIndex: 50 }}>
                   <TouchableOpacity
                     onPress={() => setShowInfo(true)}
@@ -337,91 +320,94 @@ function AppContent() {
                   </TouchableOpacity>
                 </View>
 
-                <Text className="text-5xl font-bold text-white/90 mb-2 text-center">B'right</Text>
-                <Text className="text-xl text-zinc-400 mb-12 text-center">Find harmony in conflict.</Text>
+                <View className="flex-1 justify-center items-center">
+                  <Text className="text-5xl font-bold text-white/90 mb-2 text-center">B'right</Text>
+                  <Text className="text-xl text-zinc-400 mb-10 text-center">Find harmony in conflict.</Text>
 
-                <View className="w-full max-w-[420px] bg-black/60 border border-zinc-800/50 p-5 rounded-3xl mb-8"
-                      style={{ shadowColor: '#3b82f6', shadowOpacity: 0.06, shadowRadius: 18 }}>
-                  <Text className="text-zinc-500 font-bold uppercase tracking-widest text-xs mb-2">Requests</Text>
-                  {credits ? (
-                    <>
-                      <Text className={`text-lg font-bold ${credits.freeAvailable ? 'text-emerald-200/90' : 'text-amber-200/90'}`}>
-                        {credits.freeAvailable ? "Free request available today" : "No free requests available"}
-                      </Text>
-                      <Text className="text-zinc-400 mt-1">
-                        Paid balance: <Text className="text-white/80 font-bold">{credits.paidCredits}</Text>
-                      </Text>
-                      {!credits.freeAvailable && credits.paidCredits === 0 && (
-                        <TouchableOpacity
-                          onPress={startTopUp}
-                          className="mt-4 border-2 border-amber-500/70 px-6 py-4 rounded-2xl"
-                          style={{
-                            shadowColor: '#f59e0b',
-                            shadowOpacity: 0.35,
-                            shadowRadius: 18,
-                            backgroundColor: 'rgba(245, 158, 11, 0.12)',
-                          }}
-                        >
-                          <Text className="text-amber-200 text-center font-bold text-lg">
-                            Top up (€0.20 / request)
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                      {credits.freePoolRemaining === 0 && (
-                        <Text className="text-zinc-500 text-xs mt-3">
-                          Free pool exhausted (100 total). Top up required.
-                        </Text>
-                      )}
-                    </>
-                  ) : (
-                    <Text className="text-zinc-500">Loading…</Text>
-                  )}
+                  <TouchableOpacity
+                    onPress={startNewConversation}
+                    className="border-2 border-blue-500 px-10 py-6 rounded-full active:scale-95 transform transition mb-4"
+                    style={{ 
+                      shadowColor: '#3b82f6', 
+                      shadowOpacity: 0.6, 
+                      shadowRadius: 25,
+                      backgroundColor: 'rgba(59, 130, 246, 0.15)'
+                    }}
+                  >
+                    <Text className="text-white text-2xl font-bold">New Conversation</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={openHistory}
+                    className="border-2 border-purple-500/70 px-8 py-4 rounded-full active:scale-95 transform transition"
+                    style={{ 
+                      shadowColor: '#a855f7', 
+                      shadowOpacity: 0.4, 
+                      shadowRadius: 20,
+                      backgroundColor: 'rgba(168, 85, 247, 0.1)'
+                    }}
+                  >
+                    <Text className="text-purple-300 text-lg font-bold">Past Conversations</Text>
+                  </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity
-                  onPress={startNewConversation}
-                  className="border-2 border-blue-500 px-10 py-6 rounded-full active:scale-95 transform transition mb-4"
-                  style={{ 
-                    shadowColor: '#3b82f6', 
-                    shadowOpacity: 0.6, 
-                    shadowRadius: 25,
-                    backgroundColor: 'rgba(59, 130, 246, 0.15)'
-                  }}
-                >
-                  <Text className="text-white text-2xl font-bold">New Conversation</Text>
-                </TouchableOpacity>
+                <View className="items-center">
+                  <View className="w-full max-w-[420px] bg-black/60 border border-zinc-800/50 p-5 rounded-3xl mb-4"
+                        style={{ shadowColor: '#3b82f6', shadowOpacity: 0.06, shadowRadius: 18 }}>
+                    <Text className="text-zinc-500 font-bold uppercase tracking-widest text-xs mb-2">Requests</Text>
+                    {credits ? (
+                      <>
+                        <Text className={`text-lg font-bold ${credits.freeAvailable ? 'text-emerald-200/90' : 'text-amber-200/90'}`}>
+                          {credits.freeAvailable ? "Free request available today" : "No free requests available"}
+                        </Text>
+                        <Text className="text-zinc-400 mt-1">
+                          Paid balance: <Text className="text-white/80 font-bold">{credits.paidCredits}</Text>
+                        </Text>
+                        {!credits.freeAvailable && credits.paidCredits === 0 && (
+                          <TouchableOpacity
+                            onPress={startTopUp}
+                            className="mt-4 border-2 border-amber-500/70 px-6 py-4 rounded-2xl"
+                            style={{
+                              shadowColor: '#f59e0b',
+                              shadowOpacity: 0.35,
+                              shadowRadius: 18,
+                              backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                            }}
+                          >
+                            <Text className="text-amber-200 text-center font-bold text-lg">
+                              Top up (€0.20 / request)
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                        {credits.freePoolRemaining === 0 && (
+                          <Text className="text-zinc-500 text-xs mt-3">
+                            Free pool exhausted (100 total). Top up required.
+                          </Text>
+                        )}
+                      </>
+                    ) : (
+                      <Text className="text-zinc-500">Loading…</Text>
+                    )}
+                  </View>
 
-                <TouchableOpacity
-                  onPress={openHistory}
-                  className="border-2 border-purple-500/70 px-8 py-4 rounded-full active:scale-95 transform transition mb-8"
-                  style={{ 
-                    shadowColor: '#a855f7', 
-                    shadowOpacity: 0.4, 
-                    shadowRadius: 20,
-                    backgroundColor: 'rgba(168, 85, 247, 0.1)'
-                  }}
-                >
-                  <Text className="text-purple-300 text-lg font-bold">Past Conversations</Text>
-                </TouchableOpacity>
-
-                {/* Login Status Button */}
-                <TouchableOpacity
-                  onPress={() => setShowLogin(true)}
-                  className="border border-zinc-800/50 px-6 py-3 rounded-full flex-row items-center"
-                  style={{ shadowColor: '#ffffff', shadowOpacity: 0.03, shadowRadius: 10 }}
-                >
-                  <View className="w-3 h-3 rounded-full mr-2 bg-zinc-600" />
-                  <Text className="text-zinc-500 font-medium">
-                    {deviceId ? `Device: ${deviceId.slice(0, 8)}…` : "Device: Loading…"}
-                  </Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setShowLogin(true)}
+                    className="border border-zinc-800/50 px-6 py-3 rounded-full flex-row items-center"
+                    style={{ shadowColor: '#ffffff', shadowOpacity: 0.03, shadowRadius: 10 }}
+                  >
+                    <View className="w-3 h-3 rounded-full mr-2 bg-zinc-600" />
+                    <Text className="text-zinc-500 font-medium">
+                      {deviceId ? `Device: ${deviceId.slice(0, 8)}…` : "Device: Loading…"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </Animated.View>
             )}
 
             {appState === "HISTORY" && (
               <Animated.View entering={FadeIn} className="flex-1 p-6 pt-12">
                 <View className="flex-row items-center mb-6">
-                  <TouchableOpacity onPress={goHome} className="mr-4 p-2 border border-zinc-700/50 rounded-full">
+                  <TouchableOpacity onPress={() => setAppState("HOME")} className="mr-4 p-2 border border-zinc-700/50 rounded-full">
                     <Text className="text-2xl text-white/70">←</Text>
                   </TouchableOpacity>
                   <Text className="text-3xl font-bold text-white/90">Past Conversations</Text>
@@ -458,14 +444,7 @@ function AppContent() {
 
             {appState === "TOPIC" && (
               <Animated.View entering={FadeIn} className="flex-1 p-6">
-                <View className="flex-row items-center mb-4">
-                  <TouchableOpacity onPress={goHome} className="mr-4 p-2 border border-zinc-700/50 rounded-full">
-                    <Text className="text-2xl text-white/70">←</Text>
-                  </TouchableOpacity>
-                  <View className="flex-1 pr-10">
-                    <Text className="text-3xl font-bold text-white/90 text-center">What is the topic?</Text>
-                  </View>
-                </View>
+                <Text className="text-3xl font-bold text-white/90 mb-4 text-center">What is the topic?</Text>
                 
                 {/* Listen In Feature */}
                 <ConversationListenerButton

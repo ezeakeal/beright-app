@@ -1,0 +1,24 @@
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+
+        # Deploy Stripe webhook as a separate Cloud Function (Gen2).
+        # Env vars (Stripe/Gemini/Firestore) should be set on the function once in GCP;
+        # redeploying without --set-env-vars preserves existing env vars.
+        gcloud functions deploy stripeWebhook \
+          --gen2 \
+          --runtime=nodejs20 \
+          --region=europe-west1 \
+          --source=server/gcf \
+          --entry-point=stripeWebhook \
+          --trigger-http \
+          --allow-unauthenticated
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+
