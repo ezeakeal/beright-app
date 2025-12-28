@@ -17,6 +17,25 @@ const CURRENCY = 'eur';
 const GEMINI_TEXT_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_AUDIO_MODEL = 'gemini-2.5-flash';
 
+function getGeminiApiKey() {
+  // Common failure mode in Cloud Run: copied key includes whitespace or quotes.
+  // Never log the key itself.
+  const raw =
+    process.env.GEMINI_API_KEY ??
+    process.env.GOOGLE_GENAI_API_KEY ??
+    process.env.GOOGLE_API_KEY ??
+    '';
+  const trimmed = String(raw).trim();
+  const unquoted = trimmed.replace(/^["']|["']$/g, '');
+  if (!unquoted) throw new Error('Missing GEMINI_API_KEY');
+
+  // Minimal diagnostics (safe): length only.
+  if (unquoted.length < 20) {
+    console.error('Gemini API key looks unexpectedly short. length=', unquoted.length);
+  }
+  return unquoted;
+}
+
 function yyyymmddUtcNow() {
   const d = new Date();
   return [
@@ -198,13 +217,12 @@ exports.generateText = async (req, res) => {
     if (action === 'transcribeAndExtract') {
       const { audioData, mimeType } = payload;
       
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error('Missing GEMINI_API_KEY');
+      const apiKey = getGeminiApiKey();
       
       // Use Gemini model with audio support
       const model = GEMINI_AUDIO_MODEL;
       
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
       
       const geminiPayload = {
         contents: [{
@@ -278,12 +296,11 @@ Return ONLY a JSON object with this exact structure:
 
     const finalPrompt = prompt ?? buildPromptFromAction(action, payload);
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error('Missing GEMINI_API_KEY');
+    const apiKey = getGeminiApiKey();
     
     const model = GEMINI_TEXT_MODEL;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
     const r = await fetch(url, {
       method: 'POST',
@@ -324,6 +341,13 @@ Return ONLY a JSON object with this exact structure:
       const deviceId = String(req.headers['x-device-id'] || '');
       const credits = deviceId ? await getCredits(deviceId) : null;
       return res.status(402).json({ error: 'NO_CREDITS', credits });
+    }
+    // Gemini failures are upstream; return 502 so clients don’t treat it as an app bug.
+    if (String(err?.message || '').includes('Gemini API HTTP')) {
+      return res.status(502).json({
+        error: err?.message || String(err),
+        stack: err?.stack || null,
+      });
     }
     // Return full error + stack so the client can display it
     return res.status(500).json({
