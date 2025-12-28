@@ -10,7 +10,6 @@ try { admin.app(); } catch { admin.initializeApp(); }
 // Use named database if provided (e.g., FIRESTORE_DB=beright-db), else default
 const db = getFirestore(admin.app(), process.env.FIRESTORE_DB || '(default)');
 
-const FREE_DAILY_REQUESTS_PER_DEVICE = 1;
 const FREE_POOL_LIMIT = 100;
 const UNIT_PRICE_CENTS = 20; // 20c per request
 const CURRENCY = 'eur';
@@ -45,7 +44,6 @@ function freePoolRef() {
 }
 
 async function getCredits(deviceId) {
-  const today = yyyymmddUtcNow();
   const [deviceSnap, poolSnap] = await Promise.all([
     deviceRef(deviceId).get(),
     freePoolRef().get(),
@@ -57,19 +55,12 @@ async function getCredits(deviceId) {
   const paidCredits = Number(device.paidCredits || 0);
   const usedFreeCount = Number(pool.usedFreeCount || 0);
   const freePoolRemaining = Math.max(0, FREE_POOL_LIMIT - usedFreeCount);
-
-  const lastFreeDate = String(device.lastFreeDate || '');
-  const deviceFreeRemainingToday =
-    lastFreeDate === today ? 0 : FREE_DAILY_REQUESTS_PER_DEVICE;
-
-  const freeAvailable = deviceFreeRemainingToday > 0 && freePoolRemaining > 0;
+  const freeAvailable = freePoolRemaining > 0;
 
   return {
     deviceId,
-    today,
     paidCredits,
     freeAvailable,
-    deviceFreeRemainingToday,
     freePoolRemaining,
     unitPriceCents: UNIT_PRICE_CENTS,
     currency: CURRENCY,
@@ -77,8 +68,6 @@ async function getCredits(deviceId) {
 }
 
 async function consumeOneRequestCredit(deviceId) {
-  const today = yyyymmddUtcNow();
-
   return await db.runTransaction(async (tx) => {
     const dRef = deviceRef(deviceId);
     const pRef = freePoolRef();
@@ -90,7 +79,6 @@ async function consumeOneRequestCredit(deviceId) {
     const paidCredits = Number(device.paidCredits || 0);
     const usedFreeCount = Number(pool.usedFreeCount || 0);
     const freePoolRemaining = FREE_POOL_LIMIT - usedFreeCount;
-    const lastFreeDate = String(device.lastFreeDate || '');
 
     if (paidCredits > 0) {
       tx.set(
@@ -104,16 +92,7 @@ async function consumeOneRequestCredit(deviceId) {
       return { mode: 'paid' };
     }
 
-    const deviceCanUseFreeToday = lastFreeDate !== today;
-    if (deviceCanUseFreeToday && freePoolRemaining > 0) {
-      tx.set(
-        dRef,
-        {
-          lastFreeDate: today,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+    if (freePoolRemaining > 0) {
       tx.set(
         pRef,
         {

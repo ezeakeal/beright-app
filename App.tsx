@@ -19,10 +19,8 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 type ScreenState = "HOME" | "TOPIC" | "INPUT" | "ANALYZING" | "RESULTS" | "FOLLOWUP" | "HISTORY";
 type Credits = {
   deviceId: string;
-  today: string;
   paidCredits: number;
   freeAvailable: boolean;
-  deviceFreeRemainingToday: number;
   freePoolRemaining: number;
   unitPriceCents: number;
   currency: string;
@@ -358,7 +356,7 @@ function AppContent() {
                     {credits ? (
                       <>
                         <Text className={`text-lg font-bold ${credits.freeAvailable ? 'text-emerald-200/90' : 'text-amber-200/90'}`}>
-                          {credits.freeAvailable ? "Free request available today" : "No free requests available"}
+                          {credits.freeAvailable ? "Free requests available" : "No free requests available"}
                         </Text>
                         <Text className="text-zinc-400 mt-1">
                           Paid balance: <Text className="text-white/80 font-bold">{credits.paidCredits}</Text>
