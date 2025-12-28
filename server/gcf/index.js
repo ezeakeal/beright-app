@@ -10,6 +10,7 @@ try { admin.app(); } catch { admin.initializeApp(); }
 // Use named database if provided (e.g., FIRESTORE_DB=beright-db), else default
 const db = getFirestore(admin.app(), process.env.FIRESTORE_DB || '(default)');
 
+const FREE_DAILY_REQUESTS_PER_DEVICE = 1;
 const FREE_POOL_LIMIT = 100;
 const UNIT_PRICE_CENTS = 20; // 20c per request
 const CURRENCY = 'eur';
@@ -44,6 +45,7 @@ function freePoolRef() {
 }
 
 async function getCredits(deviceId) {
+  const today = yyyymmddUtcNow();
   const [deviceSnap, poolSnap] = await Promise.all([
     deviceRef(deviceId).get(),
     freePoolRef().get(),
@@ -55,12 +57,16 @@ async function getCredits(deviceId) {
   const paidCredits = Number(device.paidCredits || 0);
   const usedFreeCount = Number(pool.usedFreeCount || 0);
   const freePoolRemaining = Math.max(0, FREE_POOL_LIMIT - usedFreeCount);
-  const freeAvailable = freePoolRemaining > 0;
+  const lastFreeDate = String(device.lastFreeDate || '');
+  const deviceFreeRemainingToday = lastFreeDate === today ? 0 : FREE_DAILY_REQUESTS_PER_DEVICE;
+  const freeAvailable = freePoolRemaining > 0 && deviceFreeRemainingToday > 0;
 
   return {
     deviceId,
+    today,
     paidCredits,
     freeAvailable,
+    deviceFreeRemainingToday,
     freePoolRemaining,
     unitPriceCents: UNIT_PRICE_CENTS,
     currency: CURRENCY,
@@ -68,6 +74,7 @@ async function getCredits(deviceId) {
 }
 
 async function consumeOneRequestCredit(deviceId) {
+  const today = yyyymmddUtcNow();
   return await db.runTransaction(async (tx) => {
     const dRef = deviceRef(deviceId);
     const pRef = freePoolRef();
@@ -80,6 +87,30 @@ async function consumeOneRequestCredit(deviceId) {
     const usedFreeCount = Number(pool.usedFreeCount || 0);
     const freePoolRemaining = FREE_POOL_LIMIT - usedFreeCount;
 
+    const lastFreeDate = String(device.lastFreeDate || '');
+    const deviceCanUseFreeToday = lastFreeDate !== today;
+
+    // Prefer free (if available) even if the user has paid credits.
+    if (deviceCanUseFreeToday && freePoolRemaining > 0) {
+      tx.set(
+        dRef,
+        {
+          lastFreeDate: today,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      tx.set(
+        pRef,
+        {
+          usedFreeCount: usedFreeCount + 1,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+      return { mode: 'free' };
+    }
+
     if (paidCredits > 0) {
       tx.set(
         dRef,
@@ -90,18 +121,6 @@ async function consumeOneRequestCredit(deviceId) {
         { merge: true }
       );
       return { mode: 'paid' };
-    }
-
-    if (freePoolRemaining > 0) {
-      tx.set(
-        pRef,
-        {
-          usedFreeCount: usedFreeCount + 1,
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      return { mode: 'free' };
     }
 
     const err = new Error('NO_CREDITS');
@@ -145,37 +164,31 @@ exports.generateText = async (req, res) => {
       return res.json({ ok: true, credits });
     }
 
-    // Stripe Checkout Session (does not consume)
-    if ((action || '').toLowerCase() === 'createcheckoutsession') {
+    // Stripe PaymentIntent for native PaymentSheet (does not consume)
+    if ((action || '').toLowerCase() === 'createpaymentintent') {
       const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-      const successUrl = process.env.STRIPE_CHECKOUT_SUCCESS_URL;
-      const cancelUrl = process.env.STRIPE_CHECKOUT_CANCEL_URL;
       if (!stripeSecretKey) throw new Error('Missing STRIPE_SECRET_KEY');
-      if (!successUrl) throw new Error('Missing STRIPE_CHECKOUT_SUCCESS_URL');
-      if (!cancelUrl) throw new Error('Missing STRIPE_CHECKOUT_CANCEL_URL');
 
       const stripe = new Stripe(stripeSecretKey, { apiVersion: '2024-06-20' });
 
-      const session = await stripe.checkout.sessions.create({
-        mode: 'payment',
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        client_reference_id: deviceId,
-        metadata: { deviceId },
-        line_items: [
-          {
-            price_data: {
-              currency: CURRENCY,
-              unit_amount: UNIT_PRICE_CENTS,
-              product_data: { name: "B'right Requests" },
-            },
-            quantity: 1,
-            adjustable_quantity: { enabled: true, minimum: 1, maximum: 10000 },
-          },
-        ],
+      const quantity = Number(payload?.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 10000) {
+        return res.status(400).json({ error: 'Invalid quantity' });
+      }
+
+      const amount = Math.round(quantity * UNIT_PRICE_CENTS);
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount,
+        currency: CURRENCY,
+        metadata: {
+          deviceId,
+          quantity: String(quantity),
+          unitPriceCents: String(UNIT_PRICE_CENTS),
+        },
+        description: "B'right conversation credits",
       });
 
-      return res.json({ ok: true, url: session.url, sessionId: session.id });
+      return res.json({ ok: true, clientSecret: paymentIntent.client_secret });
     }
 
     // Consume exactly 1 request credit for all model actions
@@ -227,6 +240,8 @@ Return ONLY a JSON object with this exact structure:
         }],
         generationConfig: {
           temperature: 0.3,
+          // Force the model to emit machine-parseable JSON (no markdown fences).
+          responseMimeType: 'application/json',
           maxOutputTokens: 2046,
         }
       };
@@ -238,13 +253,24 @@ Return ONLY a JSON object with this exact structure:
       });
       
       const data = await geminiResponse.json();
+      if (!geminiResponse.ok) {
+        throw new Error(
+          `Gemini API HTTP ${geminiResponse.status} ${geminiResponse.statusText}. Body: ${JSON.stringify(data)}`
+        );
+      }
       
       if (!data?.candidates?.[0]?.content?.parts?.[0]?.text) {
         throw new Error('Failed to get response from Gemini');
       }
       
       const text = data.candidates[0].content.parts[0].text;
-      const clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      const clean = String(text).replace(/```json/g, '').replace(/```/g, '').trim();
+      if (!clean) {
+        throw new Error(`Gemini returned empty text (audio). Raw response: ${JSON.stringify(data)}`);
+      }
+      // If JSON.parse fails, we want the exact model output in logs.
+      console.error('Gemini (audio) raw text:', String(text).slice(0, 8000));
+      console.error('Gemini (audio) clean JSON string:', String(clean).slice(0, 8000));
       const parsed = JSON.parse(clean);
       
       return res.json(parsed);
@@ -264,13 +290,29 @@ Return ONLY a JSON object with this exact structure:
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: String(finalPrompt ?? '') }]}],
+        generationConfig: {
+          temperature: 0.3,
+          // Most failures here are "valid JSON prompt, truncated JSON response".
+          // Force JSON mode and allow enough output tokens for the staged payloads.
+          responseMimeType: 'application/json',
+          maxOutputTokens: 4096,
+        },
       })
     });
     const data = await r.json();
+    if (!r.ok) {
+      throw new Error(`Gemini API HTTP ${r.status} ${r.statusText}. Body: ${JSON.stringify(data)}`);
+    }
 
     // Extract model text and return parsed JSON
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
     const clean = String(text).replace(/```json/g, '').replace(/```/g, '').trim();
+    if (!clean) {
+      throw new Error(`Gemini returned empty text. Raw response: ${JSON.stringify(data)}`);
+    }
+    // If JSON.parse fails, we want the exact model output in logs.
+    console.error('Gemini raw text:', String(text).slice(0, 8000));
+    console.error('Gemini clean JSON string:', String(clean).slice(0, 8000));
     const parsed = JSON.parse(clean);
 
     return res.json(parsed);
@@ -301,16 +343,28 @@ exports.stripeWebhook = async (req, res) => {
   const sig = req.headers['stripe-signature'];
   const event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
 
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const deviceId = session?.metadata?.deviceId;
-    if (!deviceId) throw new Error('Missing deviceId metadata on checkout session');
-
-    const items = await stripe.checkout.sessions.listLineItems(session.id, { limit: 1 });
-    const quantity = Number(items.data?.[0]?.quantity || 0);
-    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Invalid line item quantity');
+  if (event.type === 'payment_intent.succeeded') {
+    const pi = event.data.object;
+    const deviceId = pi?.metadata?.deviceId;
+    const quantity = Number(pi?.metadata?.quantity || 0);
+    if (!deviceId) throw new Error('Missing deviceId metadata on payment_intent');
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Invalid quantity metadata on payment_intent');
+    if (String(pi.currency || '').toLowerCase() !== CURRENCY) {
+      throw new Error(`Unexpected currency on payment_intent: ${pi.currency}`);
+    }
+    const expectedAmount = quantity * UNIT_PRICE_CENTS;
+    const received = Number(pi.amount_received ?? pi.amount ?? 0);
+    if (received !== expectedAmount) {
+      throw new Error(`Amount mismatch. expected=${expectedAmount} received=${received}`);
+    }
 
     await db.runTransaction(async (tx) => {
+      const paymentRef = db.collection('payments').doc(pi.id);
+      const paymentSnap = await tx.get(paymentRef);
+      if (paymentSnap.exists) {
+        return;
+      }
+
       const dRef = deviceRef(deviceId);
       const dSnap = await tx.get(dRef);
       const device = dSnap.exists ? dSnap.data() : {};
@@ -324,12 +378,13 @@ exports.stripeWebhook = async (req, res) => {
         { merge: true }
       );
       tx.set(
-        db.collection('payments').doc(session.id),
+        paymentRef,
         {
           deviceId,
           quantity,
-          amountTotal: session.amount_total,
-          currency: session.currency,
+          amountTotal: received,
+          currency: String(pi.currency || ''),
+          stripePaymentIntentId: pi.id,
           createdAt: FieldValue.serverTimestamp(),
         },
         { merge: true }

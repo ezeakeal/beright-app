@@ -1,6 +1,6 @@
 import "./global.css";
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, TextInput, ScrollView, Linking, Alert, BackHandler, AppState as RNAppState, useWindowDimensions } from "react-native";
+import { View, Text, TouchableOpacity, TextInput, ScrollView, Linking, Alert, BackHandler, AppState as RNAppState, useWindowDimensions, Modal } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
@@ -15,6 +15,8 @@ import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withTim
 import * as Speech from "expo-speech";
 import sampleTopics from "./data/sampleTopics.json";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import Constants from "expo-constants";
+import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 
 type ScreenState = "HOME" | "TOPIC" | "INPUT" | "ANALYZING" | "RESULTS" | "FOLLOWUP" | "HISTORY";
 type Credits = {
@@ -27,10 +29,16 @@ type Credits = {
 };
 
 export default function App() {
+  const publishableKey = (Constants.expoConfig?.extra as any)?.STRIPE_PUBLISHABLE_KEY;
+  if (!publishableKey) {
+    throw new Error("Missing STRIPE_PUBLISHABLE_KEY (set it in server env and rebuild)");
+  }
   return (
-    <AuthProvider>
+    <StripeProvider publishableKey={publishableKey}>
+      <AuthProvider>
         <AppContent />
-    </AuthProvider>
+      </AuthProvider>
+    </StripeProvider>
   );
 }
 
@@ -73,7 +81,12 @@ function AppContent() {
   const SERVER_URL = "https://beright-app-1021561698058.europe-west1.run.app";
   const [credits, setCredits] = useState<Credits | null>(null);
   const [creditsNonce, setCreditsNonce] = useState(0);
+  const [isToppingUp, setIsToppingUp] = useState(false);
+  const [showTopUp, setShowTopUp] = useState(false);
+  const [topUpQuantity, setTopUpQuantity] = useState(5);
   const perspectiveCardSize = Math.min(Math.max(windowWidth - 56, 220), 360);
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const merchantCountry = (Constants.expoConfig?.extra as any)?.STRIPE_MERCHANT_COUNTRY ?? "IE";
 
   React.useEffect(() => {
     analyzingFade.value = withTiming(appState === "ANALYZING" ? 0.6 : 0, { duration: 600 });
@@ -107,23 +120,72 @@ function AppContent() {
     setCredits(parsed.credits);
   }, [deviceId]);
 
-  const startTopUp = React.useCallback(async () => {
-    if (!deviceId) return;
-    const res = await fetch(SERVER_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Device-Id": deviceId,
-      },
-      body: JSON.stringify({ action: "createCheckoutSession" }),
-    });
-    const body = await res.text();
-    if (!res.ok) {
-      throw new Error(`Checkout session HTTP ${res.status} ${res.statusText}. Body: ${body}`);
+  const startTopUp = React.useCallback(
+    async (quantity: number) => {
+      if (!deviceId) throw new Error("Device ID not ready yet");
+      if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Invalid quantity");
+
+      const res = await fetch(SERVER_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Device-Id": deviceId,
+        },
+        body: JSON.stringify({ action: "createPaymentIntent", payload: { quantity } }),
+      });
+      const body = await res.text();
+      if (!res.ok) {
+        throw new Error(`CreatePaymentIntent HTTP ${res.status} ${res.statusText}. Body: ${body}`);
+      }
+      const parsed = JSON.parse(body);
+      const clientSecret = parsed?.clientSecret;
+      if (!clientSecret) {
+        throw new Error(`Missing clientSecret. Body: ${body}`);
+      }
+
+      const init = await initPaymentSheet({
+        merchantDisplayName: "B'right",
+        paymentIntentClientSecret: clientSecret,
+        googlePay: {
+          merchantCountryCode: merchantCountry,
+          testEnv: String((Constants.expoConfig?.extra as any)?.STRIPE_PUBLISHABLE_KEY || "").startsWith("pk_test"),
+        },
+      });
+      if (init.error) {
+        throw new Error(init.error.message);
+      }
+
+      const present = await presentPaymentSheet();
+      if (present.error) {
+        // User cancelled is still a non-silent outcome, but not an error.
+        if (present.error.code === "Canceled") return;
+        throw new Error(present.error.message);
+      }
+
+      // Webhook may take a moment; refresh immediately and once after a short delay.
+      await refreshCredits();
+      setTimeout(() => refreshCredits(), 1500);
+    },
+    [deviceId, initPaymentSheet, merchantCountry, presentPaymentSheet, refreshCredits]
+  );
+
+  const handleTopUpPress = React.useCallback(async () => {
+    setShowTopUp(true);
+  }, []);
+
+  const handleConfirmTopUp = React.useCallback(async () => {
+    try {
+      if (isToppingUp) return;
+      setIsToppingUp(true);
+      setShowTopUp(false);
+      await startTopUp(topUpQuantity);
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert("Top up failed", e?.message || String(e), [{ text: "OK" }]);
+    } finally {
+      setIsToppingUp(false);
     }
-    const parsed = JSON.parse(body);
-    await Linking.openURL(parsed.url);
-  }, [deviceId]);
+  }, [isToppingUp, startTopUp, topUpQuantity]);
 
   React.useEffect(() => {
     refreshCredits();
@@ -355,28 +417,35 @@ function AppContent() {
                     <Text className="text-zinc-500 font-bold uppercase tracking-widest text-xs mb-2">Requests</Text>
                     {credits ? (
                       <>
-                        <Text className={`text-lg font-bold ${credits.freeAvailable ? 'text-emerald-200/90' : 'text-amber-200/90'}`}>
-                          {credits.freeAvailable ? "Free requests available" : "No free requests available"}
-                        </Text>
-                        <Text className="text-zinc-400 mt-1">
-                          Paid balance: <Text className="text-white/80 font-bold">{credits.paidCredits}</Text>
-                        </Text>
-                        {!credits.freeAvailable && credits.paidCredits === 0 && (
+                        <View className="flex-row items-start justify-between">
+                          <View className="flex-1 pr-4">
+                            <Text className={`text-lg font-bold ${credits.freeAvailable ? 'text-emerald-200/90' : 'text-amber-200/90'}`}>
+                              {credits.freeAvailable ? "Free conversation available today" : "No free conversations available"}
+                            </Text>
+                            <Text className="text-zinc-400 mt-1">
+                              Balance: <Text className="text-white/80 font-bold">{credits.paidCredits}</Text>
+                            </Text>
+                          </View>
+
                           <TouchableOpacity
-                            onPress={startTopUp}
-                            className="mt-4 border-2 border-amber-500/70 px-6 py-4 rounded-2xl"
+                            onPress={handleTopUpPress}
+                            disabled={!deviceId || isToppingUp}
+                            className="border border-amber-500/50 px-4 py-2 rounded-full"
                             style={{
                               shadowColor: '#f59e0b',
-                              shadowOpacity: 0.35,
-                              shadowRadius: 18,
-                              backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                              shadowOpacity: 0.25,
+                              shadowRadius: 12,
+                              backgroundColor: 'rgba(245, 158, 11, 0.10)',
+                              opacity: deviceId && !isToppingUp ? 1 : 0.5,
                             }}
                           >
-                            <Text className="text-amber-200 text-center font-bold text-lg">
-                              Top up (€0.20 / request)
-                            </Text>
+                            <Text className="text-amber-200/90 font-bold">{isToppingUp ? "Opening…" : "Top up"}</Text>
                           </TouchableOpacity>
-                        )}
+                        </View>
+
+                        <Text className="text-zinc-500 text-xs mt-3">
+                          1 credit = 1 conversation. Follow up uses 1 credit.
+                        </Text>
                         {credits.freePoolRemaining === 0 && (
                           <Text className="text-zinc-500 text-xs mt-3">
                             Free pool exhausted (100 total). Top up required.
@@ -399,6 +468,56 @@ function AppContent() {
                     </Text>
                   </TouchableOpacity>
                 </View>
+
+                <Modal transparent visible={showTopUp} animationType="fade" onRequestClose={() => setShowTopUp(false)}>
+                  <View className="flex-1 justify-center items-center bg-black/80 p-6">
+                    <View className="w-full max-w-[420px] bg-black/95 border border-zinc-800/60 rounded-3xl p-6">
+                      <View className="flex-row justify-between items-center mb-4">
+                        <Text className="text-xl font-bold text-white/90">Top up credits</Text>
+                        <TouchableOpacity onPress={() => setShowTopUp(false)} className="p-2 border border-zinc-800/50 rounded-full">
+                          <Text className="text-zinc-400 font-bold">✕</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <Text className="text-zinc-400 mb-4">
+                        Choose how many conversation credits to buy.
+                      </Text>
+
+                      <View className="flex-row items-center justify-between bg-black/60 border border-zinc-800/50 rounded-2xl p-4 mb-5">
+                        <TouchableOpacity
+                          onPress={() => setTopUpQuantity((q) => Math.max(1, q - 1))}
+                          className="border border-zinc-700/60 w-12 h-12 rounded-full items-center justify-center"
+                        >
+                          <Text className="text-white/80 text-2xl font-bold">−</Text>
+                        </TouchableOpacity>
+
+                        <View className="items-center">
+                          <Text className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">Credits</Text>
+                          <Text className="text-white/90 text-4xl font-bold">{topUpQuantity}</Text>
+                          <Text className="text-zinc-500 text-xs mt-1">1 credit = 1 conversation</Text>
+                        </View>
+
+                        <TouchableOpacity
+                          onPress={() => setTopUpQuantity((q) => Math.min(10000, q + 1))}
+                          className="border border-zinc-700/60 w-12 h-12 rounded-full items-center justify-center"
+                        >
+                          <Text className="text-white/80 text-2xl font-bold">+</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <TouchableOpacity
+                        onPress={handleConfirmTopUp}
+                        className="border-2 border-amber-500/70 bg-amber-500/10 py-4 rounded-2xl"
+                        disabled={!deviceId || isToppingUp}
+                        style={{ opacity: !deviceId || isToppingUp ? 0.5 : 1 }}
+                      >
+                        <Text className="text-amber-200 text-center font-bold text-lg">
+                          Continue to payment
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Modal>
               </Animated.View>
             )}
 
@@ -533,9 +652,15 @@ function AppContent() {
                     <Text className="text-2xl font-bold text-purple-300/70 mt-4 text-center">
                       {fruitA.name}
                     </Text>
-                    {opinionA.trim() && (
-                      <View className="mt-4 bg-purple-900/20 px-4 py-2 rounded-full">
-                        <Text className="text-purple-300/60 text-sm">✓ Perspective Added</Text>
+                    {opinionA.trim() ? (
+                      <View className="mt-4 bg-purple-900/15 border border-purple-500/20 px-4 py-3 rounded-2xl w-full">
+                        <Text className="text-purple-200/80 text-sm leading-relaxed" numberOfLines={4}>
+                          {opinionA.trim()}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View className="mt-4 bg-amber-900/10 border border-amber-500/30 px-4 py-2 rounded-full">
+                        <Text className="text-amber-200/80 text-sm font-bold">Add your perspective</Text>
                       </View>
                     )}
                     <Text className="text-zinc-500 text-sm mt-3 text-center">
@@ -579,9 +704,15 @@ function AppContent() {
                     <Text className="text-2xl font-bold text-cyan-300/70 mt-4 text-center">
                       {fruitB.name}
                     </Text>
-                    {opinionB.trim() && (
-                      <View className="mt-4 bg-cyan-900/20 px-4 py-2 rounded-full">
-                        <Text className="text-cyan-300/60 text-sm">✓ Perspective Added</Text>
+                    {opinionB.trim() ? (
+                      <View className="mt-4 bg-cyan-900/15 border border-cyan-500/20 px-4 py-3 rounded-2xl w-full">
+                        <Text className="text-cyan-200/80 text-sm leading-relaxed" numberOfLines={4}>
+                          {opinionB.trim()}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View className="mt-4 bg-amber-900/10 border border-amber-500/30 px-4 py-2 rounded-full">
+                        <Text className="text-amber-200/80 text-sm font-bold">Add your perspective</Text>
                       </View>
                     )}
                     <Text className="text-zinc-500 text-sm mt-3 text-center">
@@ -664,9 +795,15 @@ function AppContent() {
                     <Text className="text-sm text-purple-400/60 mt-2 text-center">
                       Add More Details
                     </Text>
-                    {followUpA.trim() && (
-                      <View className="mt-4 bg-purple-900/20 px-4 py-2 rounded-full">
-                        <Text className="text-purple-300/60 text-sm">✓ Details Added</Text>
+                    {followUpA.trim() ? (
+                      <View className="mt-4 bg-purple-900/15 border border-purple-500/20 px-4 py-3 rounded-2xl w-full">
+                        <Text className="text-purple-200/80 text-sm leading-relaxed" numberOfLines={4}>
+                          {followUpA.trim()}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View className="mt-4 bg-amber-900/10 border border-amber-500/30 px-4 py-2 rounded-full">
+                        <Text className="text-amber-200/80 text-sm font-bold">Add more details</Text>
                       </View>
                     )}
                     <Text className="text-zinc-500 text-sm mt-3 text-center">
@@ -692,7 +829,7 @@ function AppContent() {
                       borderWidth: 3
                     }}
                   >
-                    <Text className="text-amber-200 font-bold text-lg tracking-wider">CONTINUE</Text>
+                    <Text className="text-amber-200 font-bold text-lg tracking-wider">CONTINUE • 1 credit</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -716,9 +853,15 @@ function AppContent() {
                     <Text className="text-sm text-cyan-400/60 mt-2 text-center">
                       Add More Details
                     </Text>
-                    {followUpB.trim() && (
-                      <View className="mt-4 bg-cyan-900/20 px-4 py-2 rounded-full">
-                        <Text className="text-cyan-300/60 text-sm">✓ Details Added</Text>
+                    {followUpB.trim() ? (
+                      <View className="mt-4 bg-cyan-900/15 border border-cyan-500/20 px-4 py-3 rounded-2xl w-full">
+                        <Text className="text-cyan-200/80 text-sm leading-relaxed" numberOfLines={4}>
+                          {followUpB.trim()}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View className="mt-4 bg-amber-900/10 border border-amber-500/30 px-4 py-2 rounded-full">
+                        <Text className="text-amber-200/80 text-sm font-bold">Add more details</Text>
                       </View>
                     )}
                     <Text className="text-zinc-500 text-sm mt-3 text-center">
@@ -871,7 +1014,7 @@ function AppContent() {
                         backgroundColor: 'rgba(99, 102, 241, 0.15)'
                       }}
                     >
-                      <Text className="text-indigo-200 text-center font-bold text-lg">Follow Up</Text>
+                      <Text className="text-indigo-200 text-center font-bold text-lg">Follow Up • 1 credit</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => { stopAudio(); setAppState("HOME"); }}

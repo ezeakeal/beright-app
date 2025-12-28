@@ -16,6 +16,7 @@
     "@react-native-firebase/app": "^23.5.0",
     "@react-native-firebase/auth": "^23.5.0",
     "@react-native-google-signin/google-signin": "^16.0.0",
+    "@stripe/stripe-react-native": "0.50.3",
     "babel-preset-expo": "~54.0.0",
     "clsx": "^2.1.1",
     "expo": "~54.0.25",
