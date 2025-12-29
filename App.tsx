@@ -346,8 +346,8 @@ function AppContent() {
               isPaid,
               hasSessionToken: !!newSessionToken
             });
-            // Narrate stage summaries based on payment mode
-            await speakText(stageResult.oneLineSummary, isPaid, newSessionToken);
+            // Play a pleasant chime instead of narrating each stage
+            await playProgressChime();
           }
         },
         previousOpinionA && result ? result : undefined // Pass previous analysis if this is a follow-up
@@ -433,6 +433,28 @@ function AppContent() {
           [{ text: "OK", onPress: () => setAppState("INPUT") }]
         );
       }
+    }
+  };
+
+  const playProgressChime = async () => {
+    try {
+      // Play a short, pleasant notification sound using expo-av
+      // Using a simple synthesized chime tone (C5 note, 200ms)
+      const { sound } = await Audio.Sound.createAsync(
+        { 
+          uri: 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
+        },
+        { shouldPlay: true, volume: 0.3 }
+      );
+      // Auto-unload after playing
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      // Silent fallback if audio fails
+      console.log('[TTS App] 🔔 Progress indicator');
     }
   };
 
