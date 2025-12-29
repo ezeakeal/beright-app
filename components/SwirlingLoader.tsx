@@ -8,6 +8,7 @@ import Animated, {
     withSequence,
     Easing,
     cancelAnimation,
+    runOnUI,
 } from "react-native-reanimated";
 
 export const SwirlingLoader = () => {
@@ -16,24 +17,27 @@ export const SwirlingLoader = () => {
     const scale = useSharedValue(1);
 
     useEffect(() => {
-        rotation1.value = withRepeat(
-            withTiming(360, { duration: 4000, easing: Easing.linear }),
-            -1
-        );
+        runOnUI(() => {
+            "worklet";
+            rotation1.value = withRepeat(
+                withTiming(360, { duration: 4000, easing: Easing.linear }),
+                -1
+            );
 
-        rotation2.value = withRepeat(
-            withTiming(-360, { duration: 6000, easing: Easing.linear }),
-            -1
-        );
+            rotation2.value = withRepeat(
+                withTiming(-360, { duration: 6000, easing: Easing.linear }),
+                -1
+            );
 
-        scale.value = withRepeat(
-            withSequence(
-                withTiming(1.1, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
-                withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) })
-            ),
-            -1,
-            true
-        );
+            scale.value = withRepeat(
+                withSequence(
+                    withTiming(1.1, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+                    withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) })
+                ),
+                -1,
+                true
+            );
+        })();
 
         return () => {
             cancelAnimation(rotation1);

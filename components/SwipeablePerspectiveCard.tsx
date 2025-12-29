@@ -5,6 +5,7 @@ import Animated, {
     useAnimatedStyle,
     withSpring,
     runOnJS,
+    runOnUI,
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
@@ -29,16 +30,24 @@ export const SwipeablePerspectiveCard: React.FC<SwipeablePerspectiveCardProps> =
     const translateX = useSharedValue(side === "left" ? -CARD_WIDTH + PEEK_WIDTH : CARD_WIDTH - PEEK_WIDTH);
 
     const toggleCard = () => {
-        if (isExpanded) {
-            translateX.value = withSpring(side === "left" ? -CARD_WIDTH + PEEK_WIDTH : CARD_WIDTH - PEEK_WIDTH);
-        } else {
-            translateX.value = withSpring(0);
-        }
-        setIsExpanded(!isExpanded);
+        const nextExpanded = !isExpanded;
+        setIsExpanded(nextExpanded);
+        runOnUI(
+            (
+                next: boolean,
+                s: "left" | "right"
+            ) => {
+                "worklet";
+                translateX.value = withSpring(
+                    next ? 0 : (s === "left" ? -CARD_WIDTH + PEEK_WIDTH : CARD_WIDTH - PEEK_WIDTH)
+                );
+            }
+        )(nextExpanded, side);
     };
 
     const pan = Gesture.Pan()
         .onUpdate((event) => {
+            "worklet";
             if (side === "left") {
                 translateX.value = Math.min(0, Math.max(-CARD_WIDTH + PEEK_WIDTH, event.translationX - CARD_WIDTH + PEEK_WIDTH));
             } else {
@@ -46,6 +55,7 @@ export const SwipeablePerspectiveCard: React.FC<SwipeablePerspectiveCardProps> =
             }
         })
         .onEnd(() => {
+            "worklet";
             const threshold = CARD_WIDTH / 3;
             if (side === "left") {
                 if (translateX.value > -threshold) {

@@ -124,6 +124,24 @@ export const analyzeConflictStaged = async (
     previousAnalysis?: AnalysisResult
 ): Promise<AnalysisResult> => {
     try {
+        // Start conversation and consume 1 credit upfront
+        const deviceId = await getDeviceId();
+        const startRes = await fetch(GCF_TEXT_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-Device-Id": deviceId,
+            },
+            body: JSON.stringify({ action: "startConversation" }),
+        });
+        
+        if (!startRes.ok) {
+            const errorText = await startRes.text();
+            throw new Error(`Failed to start conversation: ${startRes.status} ${errorText}`);
+        }
+        
+        const { sessionToken } = await startRes.json();
+        
         // Stage 1: Initial Analysis
         onProgress("Initial Analysis", 1 / 4);
 
@@ -132,7 +150,7 @@ export const analyzeConflictStaged = async (
         const initial = await postModel({
             action: "initial",
             payload: { topic, opinionA, opinionB, previousAnalysis }
-        });
+        }, sessionToken);
         onProgress("Initial Analysis", 1 / 4, {
             stageName: "Initial Understanding",
             summaryBullets: sanitizeBullets(initial.summaryBullets),
@@ -147,7 +165,7 @@ export const analyzeConflictStaged = async (
         const queries = await postModel({
             action: "queries",
             payload: { topic, opinionA, opinionB }
-        });
+        }, sessionToken);
 
         // Stage 3: Search and analyze conflicting evidence
         onProgress("Searching for conflicting perspectives", 2.5 / 4);
@@ -180,7 +198,7 @@ export const analyzeConflictStaged = async (
                 evidenceA: contentA.join(' '),
                 evidenceB: contentB.join(' ')
             }
-        });
+        }, sessionToken);
         onProgress("Conflicting Evidence", 3 / 4, {
             stageName: "Conflicting Perspectives",
             summaryBullets: sanitizeBullets(conflict.summaryBullets),
@@ -195,7 +213,7 @@ export const analyzeConflictStaged = async (
         const supportQuery = await postModel({
             action: "supportQuery",
             payload: { topic, opinionA, opinionB }
-        });
+        }, sessionToken);
         const supportResults = await searchDuckDuckGo(supportQuery.query, 3);
         console.log('Support search results:', supportResults);
         const supportContent = await Promise.all(
@@ -213,7 +231,7 @@ export const analyzeConflictStaged = async (
                 supportQuery: supportQuery.query,
                 evidence: supportContent.join(' ')
             }
-        });
+        }, sessionToken);
         onProgress("Supporting Evidence", 3.75 / 4, {
             stageName: "Finding Common Ground",
             summaryBullets: sanitizeBullets(support.summaryBullets),
@@ -235,7 +253,7 @@ export const analyzeConflictStaged = async (
                 conflictNarration: conflict.narration,
                 supportNarration: support.narration
             }
-        });
+        }, sessionToken);
 
         // Collect relevant links
         const summaryLinks = supportResults.slice(0, 2).map(r => ({ title: r.title, url: r.url }));

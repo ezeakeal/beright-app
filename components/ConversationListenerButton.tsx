@@ -51,7 +51,10 @@ export function ConversationListenerButton({ onConversationExtracted }: Props) {
       setIsListening(true);
       setDuration(0);
     } catch (error) {
-      Alert.alert('Error', 'Could not start recording. Please check permissions.');
+      Alert.alert(
+        'Recording Permission Required',
+        'B\'right needs microphone access to listen to conversations. Please enable it in your device settings.'
+      );
       console.error(error);
     }
   };
@@ -66,18 +69,37 @@ export function ConversationListenerButton({ onConversationExtracted }: Props) {
       if (result.confidence === 'low') {
         Alert.alert(
           'Low Confidence',
-          'The conversation was unclear. The extracted information may not be accurate.',
+          'We had trouble understanding the conversation. The audio might be unclear or contain only one viewpoint.\n\nWould you like to review what we extracted?',
           [
-            { text: 'Edit Manually', onPress: () => onConversationExtracted(result) },
             { text: 'Try Again', style: 'cancel' },
+            { text: 'Review', onPress: () => onConversationExtracted(result) }
           ]
         );
       } else {
         onConversationExtracted(result);
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to process conversation');
       console.error(error);
+      
+      const errorMessage = error?.message || String(error);
+      
+      if (errorMessage.includes("NO_CREDITS") || errorMessage.includes("402")) {
+        Alert.alert(
+          'No Credits Available',
+          'You need credits to use the conversation listener feature.',
+          [{ text: 'OK' }]
+        );
+      } else if (errorMessage.includes("Network") || errorMessage.includes("Failed to fetch")) {
+        Alert.alert(
+          'Connection Error',
+          'Unable to process the recording. Please check your internet connection and try again.'
+        );
+      } else {
+        Alert.alert(
+          'Processing Failed',
+          'We couldn\'t process your recording. Please try again with clearer audio or type the perspectives manually.'
+        );
+      }
     } finally {
       setIsProcessing(false);
     }

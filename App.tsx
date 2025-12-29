@@ -11,7 +11,7 @@ import { ConversationListenerButton } from "./components/ConversationListenerBut
 import { PerspectiveInputModal } from "./components/PerspectiveInputModal";
 import { analyzeConflictStaged, AnalysisResult, getRandomFruitPair, StageResult } from "./utils/gemini";
 import { saveConversation, getPastConversations, StoredConversation } from "./utils/storage";
-import Animated, { FadeIn, FadeInDown, useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
+import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
 import * as Speech from "expo-speech";
 import sampleTopics from "./data/sampleTopics.json";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
@@ -53,7 +53,7 @@ function AppContent() {
   const [showInfo, setShowInfo] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [editingPerspective, setEditingPerspective] = useState<"A" | "B" | null>(null);
-  const { deviceId } = useAuth();
+  const { deviceId, loading: authLoading } = useAuth();
 
   const [fruitA, setFruitA] = useState<{ name: string; emoji: string } | null>(null);
   const [fruitB, setFruitB] = useState<{ name: string; emoji: string } | null>(null);
@@ -69,14 +69,6 @@ function AppContent() {
   const [followUpA, setFollowUpA] = useState("");
   const [followUpB, setFollowUpB] = useState("");
 
-  // Animated background fade during ANALYZING
-  const analyzingFade = useSharedValue(0);
-  const backgroundFadeStyle = useAnimatedStyle(() => {
-    return {
-      opacity: analyzingFade.value,
-    };
-  });
-
   const resolveRunId = React.useRef(0);
   const SERVER_URL = "https://beright-app-1021561698058.europe-west1.run.app";
   const [credits, setCredits] = useState<Credits | null>(null);
@@ -87,12 +79,6 @@ function AppContent() {
   const perspectiveCardSize = Math.min(Math.max(windowWidth - 56, 220), 360);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const merchantCountry = (Constants.expoConfig?.extra as any)?.STRIPE_MERCHANT_COUNTRY ?? "IE";
-
-  React.useEffect(() => {
-    analyzingFade.value = withTiming(appState === "ANALYZING" ? 0.6 : 0, { duration: 600 });
-  }, [appState]);
-
-  // (stopAudio is defined earlier)
 
   const goHome = () => {
     resolveRunId.current += 1;
@@ -119,6 +105,10 @@ function AppContent() {
     const parsed = JSON.parse(body);
     setCredits(parsed.credits);
   }, [deviceId]);
+
+  const canStartConversation =
+    !!credits && (credits.freeAvailable || Number(credits.paidCredits) > 0);
+  const creditsFetching = !authLoading && !!deviceId && credits === null;
 
   const startTopUp = React.useCallback(
     async (quantity: number) => {
@@ -193,22 +183,47 @@ function AppContent() {
       setIsToppingUp(true);
       setShowTopUp(false);
       await startTopUp(topUpQuantity);
+      
+      Alert.alert(
+        "Success! 🎉",
+        `You've added ${topUpQuantity} credit${topUpQuantity > 1 ? 's' : ''} to your account.`,
+        [{ text: "Great!" }]
+      );
     } catch (e: any) {
       console.error(e);
-      Alert.alert("Top up failed", e?.message || String(e), [{ text: "OK" }]);
+      
+      const errorMessage = e?.message || String(e);
+      
+      if (errorMessage.includes("Canceled") || errorMessage.includes("cancelled")) {
+        // User cancelled - silent, no alert
+        return;
+      } else if (errorMessage.includes("Network") || errorMessage.includes("Failed to fetch")) {
+        Alert.alert(
+          "Connection Error",
+          "Unable to process payment. Please check your internet connection and try again.",
+          [{ text: "OK" }]
+        );
+      } else {
+        Alert.alert(
+          "Payment Failed",
+          "We couldn't complete your purchase. Your card was not charged.\n\nPlease try again or contact support if the issue persists.",
+          [{ text: "OK" }]
+        );
+      }
     } finally {
       setIsToppingUp(false);
     }
   }, [isToppingUp, startTopUp, topUpQuantity]);
 
   React.useEffect(() => {
-    refreshCredits();
-  }, [refreshCredits, creditsNonce]);
+    if (!deviceId) return;
+    void refreshCredits();
+  }, [deviceId, refreshCredits, creditsNonce]);
 
   React.useEffect(() => {
     const sub = RNAppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
-        refreshCredits();
+        void refreshCredits();
       }
     });
     return () => sub.remove();
@@ -353,16 +368,57 @@ function AppContent() {
 
     } catch (error: any) {
       console.error(error);
-      if (error.message === "RATE_LIMIT_EXCEEDED") {
+      
+      // Parse error message to provide better UX
+      const errorMessage = error?.message || String(error);
+      
+      if (errorMessage.includes("NO_CREDITS") || errorMessage.includes("402")) {
+        Alert.alert(
+          "No Credits Available 💳",
+          "You've used your free conversation for today and don't have any paid credits.\n\nWould you like to top up?",
+          [
+            { text: "Maybe Later", style: "cancel", onPress: () => setAppState("INPUT") },
+            { 
+              text: "Top Up Now", 
+              style: "default",
+              onPress: () => {
+                setAppState("HOME");
+                setShowTopUp(true);
+              }
+            }
+          ]
+        );
+      } else if (errorMessage.includes("RATE_LIMIT") || errorMessage.includes("429")) {
         Alert.alert(
           "Too Many Requests",
-          "We are experiencing high traffic. Please try again in a moment.",
-          [{ text: "OK" }]
+          "We're experiencing high traffic right now. Please wait a moment and try again.",
+          [{ text: "OK", onPress: () => setAppState("INPUT") }]
+        );
+      } else if (errorMessage.includes("MISSING_DEVICE_ID") || errorMessage.includes("401")) {
+        Alert.alert(
+          "Authentication Error",
+          "Something went wrong with your device authentication. Please restart the app.",
+          [{ text: "OK", onPress: () => setAppState("INPUT") }]
+        );
+      } else if (errorMessage.includes("Network") || errorMessage.includes("Failed to fetch")) {
+        Alert.alert(
+          "Connection Error",
+          "Unable to connect to the server. Please check your internet connection and try again.",
+          [{ text: "OK", onPress: () => setAppState("INPUT") }]
+        );
+      } else if (errorMessage.includes("Gemini API")) {
+        Alert.alert(
+          "AI Service Error",
+          "The AI service encountered an issue. Our team has been notified. Please try again in a few moments.",
+          [{ text: "OK", onPress: () => setAppState("INPUT") }]
         );
       } else {
-        Alert.alert("Error", "Something went wrong. Please try again.");
+        Alert.alert(
+          "Something Went Wrong",
+          `We encountered an unexpected error: ${errorMessage.slice(0, 150)}\n\nPlease try again.`,
+          [{ text: "OK", onPress: () => setAppState("INPUT") }]
+        );
       }
-      setAppState("INPUT");
     }
   };
 
@@ -377,13 +433,25 @@ function AppContent() {
         locations={[0, 0.3, 0.7, 1]}
         className="flex-1"
       >
-        <Animated.View className="flex-1 bg-black/40" style={backgroundFadeStyle} pointerEvents="none" />
+        {appState === "ANALYZING" ? (
+          <Animated.View
+            entering={FadeIn.duration(600)}
+            exiting={FadeOut.duration(600)}
+            className="flex-1 bg-black/40"
+            style={{ opacity: 0.6 }}
+            pointerEvents="none"
+          />
+        ) : null}
         <View className="flex-1 absolute inset-0">
           <SafeAreaView className="flex-1">
             <StatusBar style="light" />
 
             {appState === "HOME" && (
-              <Animated.View entering={FadeIn} className="flex-1 p-6 relative">
+              <Animated.View 
+                key={`home-${!!credits}-${canStartConversation}`}
+                entering={FadeIn} 
+                className="flex-1 p-6 relative"
+              >
                 <View className="absolute top-0 right-6" style={{ zIndex: 50 }}>
                   <TouchableOpacity
                     onPress={() => setShowInfo(true)}
@@ -399,13 +467,20 @@ function AppContent() {
                   <Text className="text-xl text-zinc-400 mb-10 text-center">Find harmony in conflict.</Text>
 
                   <TouchableOpacity
-                    onPress={startNewConversation}
-                    className="border-2 border-blue-500 px-10 py-6 rounded-full active:scale-95 transform transition mb-4"
+                    onPress={() => {
+                      if (!canStartConversation) return;
+                      startNewConversation();
+                    }}
+                    disabled={!canStartConversation}
+                    className={`border-2 border-blue-500 px-10 py-6 rounded-full transform transition mb-4 ${
+                      canStartConversation ? "active:scale-95" : ""
+                    }`}
                     style={{ 
                       shadowColor: '#3b82f6', 
                       shadowOpacity: 0.6, 
                       shadowRadius: 25,
-                      backgroundColor: 'rgba(59, 130, 246, 0.15)'
+                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                      opacity: canStartConversation ? 1 : 0.45,
                     }}
                   >
                     <Text className="text-white text-2xl font-bold">New Conversation</Text>
@@ -429,7 +504,11 @@ function AppContent() {
                   <View className="w-full max-w-[420px] bg-black/60 border border-zinc-800/50 p-5 rounded-3xl mb-4"
                         style={{ shadowColor: '#3b82f6', shadowOpacity: 0.06, shadowRadius: 18 }}>
                     <Text className="text-zinc-500 font-bold uppercase tracking-widest text-xs mb-2">Requests</Text>
-                    {credits ? (
+                    {authLoading || !deviceId ? (
+                      <Text className="text-zinc-500 text-xs">Loading device…</Text>
+                    ) : creditsFetching ? (
+                      <Text className="text-zinc-500 text-xs">Fetching credits…</Text>
+                    ) : credits ? (
                       <>
                         <View className="flex-row items-start justify-between">
                           <View className="flex-1 pr-4">
@@ -509,6 +588,11 @@ function AppContent() {
                           <Text className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-1">Credits</Text>
                           <Text className="text-white/90 text-4xl font-bold">{topUpQuantity}</Text>
                           <Text className="text-zinc-500 text-xs mt-1">1 credit = 1 conversation</Text>
+                          {credits?.unitPriceCents != null && credits?.currency ? (
+                            <Text className="text-zinc-500 text-xs mt-1">
+                              Price: {(Number(credits.unitPriceCents) / 100).toFixed(2)} {String(credits.currency).toUpperCase()} per credit
+                            </Text>
+                          ) : null}
                         </View>
 
                         <TouchableOpacity

@@ -27,11 +27,16 @@ function getGeminiApiKey() {
     '';
   const trimmed = String(raw).trim();
   const unquoted = trimmed.replace(/^["']|["']$/g, '');
-  if (!unquoted) throw new Error('Missing GEMINI_API_KEY');
+  if (!unquoted) {
+    throw new Error('Missing GEMINI_API_KEY environment variable. Set it in Cloud Run config.');
+  }
 
-  // Minimal diagnostics (safe): length only.
+  // Minimal diagnostics (safe): length and prefix only.
   if (unquoted.length < 20) {
-    console.error('Gemini API key looks unexpectedly short. length=', unquoted.length);
+    console.error('[GEMINI] API key looks unexpectedly short. length=', unquoted.length);
+  }
+  if (!unquoted.startsWith('AIza')) {
+    console.error('[GEMINI] API key does not start with expected prefix "AIza". Check if key is correct.');
   }
   return unquoted;
 }
@@ -298,8 +303,43 @@ exports.generateText = async (req, res) => {
       return res.json({ ok: true, credits });
     }
 
-    // Consume exactly 1 request credit for all model actions
-    await consumeOneRequestCredit(deviceId);
+    // Start a new conversation: consume 1 credit and return a session token for subsequent calls
+    if ((action || '').toLowerCase() === 'startconversation') {
+      await consumeOneRequestCredit(deviceId);
+      
+      // Generate a simple session token (valid for 10 minutes)
+      const sessionToken = `${deviceId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const expiresAt = Date.now() + (10 * 60 * 1000); // 10 minutes
+      
+      // Store session in Firestore
+      await db.collection('conversationSessions').doc(sessionToken).set({
+        deviceId,
+        createdAt: FieldValue.serverTimestamp(),
+        expiresAt,
+      });
+      
+      const credits = await getCredits(deviceId);
+      return res.json({ ok: true, sessionToken, credits });
+    }
+
+    // Check if this request has a valid session token (for multi-stage conversations)
+    const sessionToken = req.headers['x-session-token'];
+    let hasValidSession = false;
+    
+    if (sessionToken) {
+      const sessionSnap = await db.collection('conversationSessions').doc(String(sessionToken)).get();
+      if (sessionSnap.exists) {
+        const session = sessionSnap.data();
+        if (session.deviceId === deviceId && session.expiresAt > Date.now()) {
+          hasValidSession = true;
+        }
+      }
+    }
+
+    // Consume exactly 1 request credit for all model actions (unless covered by session)
+    if (!hasValidSession) {
+      await consumeOneRequestCredit(deviceId);
+    }
 
     // Handle audio transcription and extraction action
     if (action === 'transcribeAndExtract') {
@@ -360,8 +400,13 @@ Return ONLY a JSON object with this exact structure:
       
       const data = await geminiResponse.json();
       if (!geminiResponse.ok) {
+        console.error('[GEMINI] Audio API error:', {
+          status: geminiResponse.status,
+          statusText: geminiResponse.statusText,
+          error: data?.error?.message || JSON.stringify(data).slice(0, 200)
+        });
         throw new Error(
-          `Gemini API HTTP ${geminiResponse.status} ${geminiResponse.statusText}. Body: ${JSON.stringify(data)}`
+          `Gemini API HTTP ${geminiResponse.status} ${geminiResponse.statusText}. Error: ${data?.error?.message || 'Unknown'}. Body: ${JSON.stringify(data)}`
         );
       }
       
@@ -406,7 +451,12 @@ Return ONLY a JSON object with this exact structure:
     });
     const data = await r.json();
     if (!r.ok) {
-      throw new Error(`Gemini API HTTP ${r.status} ${r.statusText}. Body: ${JSON.stringify(data)}`);
+      console.error('[GEMINI] Text API error:', {
+        status: r.status,
+        statusText: r.statusText,
+        error: data?.error?.message || JSON.stringify(data).slice(0, 200)
+      });
+      throw new Error(`Gemini API HTTP ${r.status} ${r.statusText}. Error: ${data?.error?.message || 'Unknown'}. Body: ${JSON.stringify(data)}`);
     }
 
     // Extract model text and return parsed JSON

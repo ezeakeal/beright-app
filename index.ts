@@ -1,6 +1,13 @@
 import { registerRootComponent } from 'expo';
+import { configureReanimatedLogger, ReanimatedLogLevel } from 'react-native-reanimated';
 
 import App from './App';
+
+// Must run before any Reanimated code executes; keeps dev logs clean and avoids strict-mode spam.
+configureReanimatedLogger({
+  level: ReanimatedLogLevel.error,
+  strict: false,
+});
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
 // It also ensures that whether you load the app in Expo Go or in a native build,

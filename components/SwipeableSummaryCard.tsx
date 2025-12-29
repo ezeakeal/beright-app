@@ -5,6 +5,7 @@ import Animated, {
     useAnimatedStyle,
     withSpring,
     runOnJS,
+    runOnUI,
 } from "react-native-reanimated";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
@@ -27,19 +28,21 @@ export const SwipeableSummaryCard: React.FC<SwipeableSummaryCardProps> = ({
     const translateY = useSharedValue(0);
 
     const toggleCard = () => {
-        if (isExpanded) {
-            translateY.value = withSpring(-CARD_HEIGHT + PEEK_HEIGHT);
-        } else {
-            translateY.value = withSpring(0);
-        }
-        setIsExpanded(!isExpanded);
+        const nextExpanded = !isExpanded;
+        setIsExpanded(nextExpanded);
+        runOnUI((next: boolean) => {
+            "worklet";
+            translateY.value = withSpring(next ? 0 : -CARD_HEIGHT + PEEK_HEIGHT);
+        })(nextExpanded);
     };
 
     const pan = Gesture.Pan()
         .onUpdate((event) => {
+            "worklet";
             translateY.value = Math.min(0, Math.max(-CARD_HEIGHT + PEEK_HEIGHT, event.translationY));
         })
         .onEnd(() => {
+            "worklet";
             const threshold = CARD_HEIGHT / 3;
             if (translateY.value < -threshold) {
                 translateY.value = withSpring(-CARD_HEIGHT + PEEK_HEIGHT);
