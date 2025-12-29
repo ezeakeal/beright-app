@@ -465,8 +465,8 @@ Return ONLY a JSON object with this exact structure:
           input: { text: String(text).slice(0, 5000) }, // Limit to 5000 chars
           voice: {
             languageCode: 'en-US',
-            name: 'en-US-Neural2-J', // High-quality Neural2 voice
-            ssmlGender: 'NEUTRAL',
+            name: 'en-US-Neural2-F', // High-quality Neural2 female voice
+            ssmlGender: 'FEMALE',
           },
           audioConfig: {
             audioEncoding: 'MP3',
