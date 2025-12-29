@@ -68,6 +68,9 @@ function AppContent() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [isPaidConversation, setIsPaidConversation] = useState(false);
   const [audioSound, setAudioSound] = useState<Audio.Sound | null>(null);
+  
+  // Audio cache to prevent regeneration
+  const audioCache = React.useRef<Map<string, string>>(new Map());
 
   // Follow-up tracking
   const [previousOpinionA, setPreviousOpinionA] = useState("");
@@ -94,6 +97,8 @@ function AppContent() {
     setCreditsNonce((n) => n + 1);
     setSessionToken(null);
     setIsPaidConversation(false);
+    // Clear audio cache when going home
+    audioCache.current.clear();
   };
 
   const refreshCredits = React.useCallback(async () => {
@@ -450,48 +455,63 @@ function AppContent() {
 
       if (isPaid && token) {
         console.log('[TTS App] 💳 Paid conversation - attempting Google Cloud TTS...');
-        const ttsStartTime = Date.now();
         
-        try {
-          const ttsResult = await generateTTS(text, token);
-          const ttsDuration = Date.now() - ttsStartTime;
+        // Check cache first
+        const cacheKey = `${text}-${token}`;
+        let audioBase64 = audioCache.current.get(cacheKey);
+        
+        if (audioBase64) {
+          console.log('[TTS App] 🗄️ Using cached audio (no regeneration needed)');
+        } else {
+          const ttsStartTime = Date.now();
           
-          console.log('[TTS App] Response from generateTTS:', {
-            duration: `${ttsDuration}ms`,
-            isPaid: ttsResult.isPaid,
-            hasAudio: !!ttsResult.audioBase64,
-            error: ttsResult.error
-          });
-          
-          if (ttsResult.isPaid && ttsResult.audioBase64) {
-            console.log('[TTS App] 🎵 Playing Google TTS audio...');
-            const playStartTime = Date.now();
+          try {
+            const ttsResult = await generateTTS(text, token);
+            const ttsDuration = Date.now() - ttsStartTime;
             
-            const { sound } = await Audio.Sound.createAsync(
-              { uri: `data:audio/mp3;base64,${ttsResult.audioBase64}` },
-              { shouldPlay: true }
-            );
-            
-            const playDuration = Date.now() - playStartTime;
-            console.log('[TTS App] ✅ Google TTS audio loaded and playing:', {
-              loadDuration: `${playDuration}ms`,
-              totalDuration: `${Date.now() - ttsStartTime}ms`
-            });
-            
-            setAudioSound(sound);
-            return;
-          } else {
-            console.warn('[TTS App] ⚠️ Google TTS returned no audio, falling back to built-in:', {
+            console.log('[TTS App] Response from generateTTS:', {
+              duration: `${ttsDuration}ms`,
               isPaid: ttsResult.isPaid,
+              hasAudio: !!ttsResult.audioBase64,
               error: ttsResult.error
             });
+            
+            if (ttsResult.isPaid && ttsResult.audioBase64) {
+              audioBase64 = ttsResult.audioBase64;
+              // Cache for future plays
+              audioCache.current.set(cacheKey, audioBase64);
+              console.log('[TTS App] 💾 Audio cached for future playback');
+            } else {
+              console.warn('[TTS App] ⚠️ Google TTS returned no audio, falling back to built-in:', {
+                isPaid: ttsResult.isPaid,
+                error: ttsResult.error
+              });
+            }
+          } catch (ttsError: any) {
+            console.error('[TTS App] ❌ Google TTS failed, falling back to built-in:', {
+              error: ttsError?.message || String(ttsError),
+              name: ttsError?.name,
+              duration: `${Date.now() - ttsStartTime}ms`
+            });
           }
-        } catch (ttsError: any) {
-          console.error('[TTS App] ❌ Google TTS failed, falling back to built-in:', {
-            error: ttsError?.message || String(ttsError),
-            name: ttsError?.name,
-            duration: `${Date.now() - ttsStartTime}ms`
+        }
+        
+        if (audioBase64) {
+          console.log('[TTS App] 🎵 Playing Google TTS audio...');
+          const playStartTime = Date.now();
+          
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: `data:audio/mp3;base64,${audioBase64}` },
+            { shouldPlay: true }
+          );
+          
+          const playDuration = Date.now() - playStartTime;
+          console.log('[TTS App] ✅ Google TTS audio loaded and playing:', {
+            loadDuration: `${playDuration}ms`
           });
+          
+          setAudioSound(sound);
+          return;
         }
       } else {
         console.log('[TTS App] 🆓 Free conversation - using built-in TTS');
@@ -1148,7 +1168,7 @@ function AppContent() {
                           backgroundColor: 'rgba(59, 130, 246, 0.15)'
                         }}
                       >
-                        <Text className="text-blue-200 font-bold">🔊 Play{isPaidConversation ? ' (Premium)' : ''}</Text>
+                        <Text className="text-blue-200 font-bold">🔊 Play</Text>
                       </TouchableOpacity>
                       <TouchableOpacity 
                         onPress={stopAudio} 
