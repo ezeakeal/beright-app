@@ -443,106 +443,55 @@ function AppContent() {
         require('./assets/sounds/progress-chime.wav'),
         { shouldPlay: true, volume: 0.6 }
       );
-      // Auto-unload after playing
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           sound.unloadAsync();
         }
       });
-      console.log('[TTS App] 🔔 Progress chime played');
     } catch (error) {
-      console.log('[TTS App] ⚠️ Could not play progress chime:', error);
+      // Silent fallback
     }
   };
 
   const speakText = async (text: string, isPaid: boolean, token: string | null) => {
-    console.log('[TTS App] 🔊 speakText called:', {
-      textLength: text.length,
-      textPreview: text.slice(0, 100),
-      isPaid,
-      hasToken: !!token,
-      willUseGoogleTTS: isPaid && !!token
-    });
-
     try {
-      // Stop any current audio
       await stopAudio();
 
       if (isPaid && token) {
-        console.log('[TTS App] 💳 Paid conversation - attempting Google Cloud TTS...');
-        
-        // Check cache first
         const cacheKey = `${text}-${token}`;
         let audioBase64 = audioCache.current.get(cacheKey);
         
-        if (audioBase64) {
-          console.log('[TTS App] 🗄️ Using cached audio (no regeneration needed)');
-        } else {
-          const ttsStartTime = Date.now();
-          
+        if (!audioBase64) {
           try {
             const ttsResult = await generateTTS(text, token);
-            const ttsDuration = Date.now() - ttsStartTime;
-            
-            console.log('[TTS App] Response from generateTTS:', {
-              duration: `${ttsDuration}ms`,
-              isPaid: ttsResult.isPaid,
-              hasAudio: !!ttsResult.audioBase64,
-              error: ttsResult.error
-            });
             
             if (ttsResult.isPaid && ttsResult.audioBase64) {
               audioBase64 = ttsResult.audioBase64;
-              // Cache for future plays
               audioCache.current.set(cacheKey, audioBase64);
-              console.log('[TTS App] 💾 Audio cached for future playback');
-            } else {
-              console.warn('[TTS App] ⚠️ Google TTS returned no audio, falling back to built-in:', {
-                isPaid: ttsResult.isPaid,
-                error: ttsResult.error
-              });
             }
           } catch (ttsError: any) {
-            console.error('[TTS App] ❌ Google TTS failed, falling back to built-in:', {
-              error: ttsError?.message || String(ttsError),
-              name: ttsError?.name,
-              duration: `${Date.now() - ttsStartTime}ms`
-            });
+            console.error('TTS generation failed:', ttsError?.message);
           }
         }
         
         if (audioBase64) {
-          console.log('[TTS App] 🎵 Playing Google TTS audio...');
-          const playStartTime = Date.now();
-          
           const { sound } = await Audio.Sound.createAsync(
             { uri: `data:audio/mp3;base64,${audioBase64}` },
             { shouldPlay: true }
           );
-          
-          const playDuration = Date.now() - playStartTime;
-          console.log('[TTS App] ✅ Google TTS audio loaded and playing:', {
-            loadDuration: `${playDuration}ms`
-          });
-          
           setAudioSound(sound);
           return;
         }
-      } else {
-        console.log('[TTS App] 🆓 Free conversation - using built-in TTS');
       }
       
-      // Fallback to built-in TTS for free conversations or if Google TTS fails
-      console.log('[TTS App] 📱 Using built-in expo-speech TTS');
+      // Fallback to built-in TTS
       Speech.speak(text, {
         rate: 0.85,
         pitch: 1.05,
         language: 'en-US'
       });
     } catch (error) {
-      console.error('[TTS App] ❌ Final error in speakText:', error);
-      // Final fallback to built-in
-      console.log('[TTS App] 📱 Final fallback to built-in TTS');
+      console.error('TTS error:', error);
       Speech.speak(text, {
         rate: 0.85,
         pitch: 1.05,
@@ -552,15 +501,13 @@ function AppContent() {
   };
 
   const stopAudio = async () => {
-    console.log('[TTS App] 🛑 Stopping audio...', { hasAudioSound: !!audioSound });
     Speech.stop();
     if (audioSound) {
       try {
         await audioSound.stopAsync();
         await audioSound.unloadAsync();
-        console.log('[TTS App] ✅ Audio sound stopped and unloaded');
       } catch (e) {
-        console.error('[TTS App] ⚠️ Error stopping audio:', e);
+        // Silent
       }
       setAudioSound(null);
     }
