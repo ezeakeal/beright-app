@@ -9,10 +9,11 @@ import { InfoModal } from "./components/InfoModal";
 import { LoginModal } from "./components/LoginModal";
 import { ConversationListenerButton } from "./components/ConversationListenerButton";
 import { PerspectiveInputModal } from "./components/PerspectiveInputModal";
-import { analyzeConflictStaged, AnalysisResult, getRandomFruitPair, StageResult } from "./utils/gemini";
+import { analyzeConflictStaged, AnalysisResult, getRandomFruitPair, StageResult, generateTTS } from "./utils/gemini";
 import { saveConversation, getPastConversations, StoredConversation } from "./utils/storage";
 import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
 import * as Speech from "expo-speech";
+import { Audio } from "expo-av";
 import sampleTopics from "./data/sampleTopics.json";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Constants from "expo-constants";
@@ -63,6 +64,11 @@ function AppContent() {
   const [progress, setProgress] = useState(0);
   const [stageResults, setStageResults] = useState<StageResult[]>([]);
 
+  // Session tracking for TTS
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [isPaidConversation, setIsPaidConversation] = useState(false);
+  const [audioSound, setAudioSound] = useState<Audio.Sound | null>(null);
+
   // Follow-up tracking
   const [previousOpinionA, setPreviousOpinionA] = useState("");
   const [previousOpinionB, setPreviousOpinionB] = useState("");
@@ -86,6 +92,8 @@ function AppContent() {
     setEditingPerspective(null);
     setAppState("HOME");
     setCreditsNonce((n) => n + 1);
+    setSessionToken(null);
+    setIsPaidConversation(false);
   };
 
   const refreshCredits = React.useCallback(async () => {
@@ -320,29 +328,27 @@ function AppContent() {
         ? `${previousOpinionB}\n\nAdditional context: ${followUpB}`
         : opinionB;
 
-      const analysis = await analyzeConflictStaged(
+      const { result: analysis, sessionToken: newSessionToken, isPaid } = await analyzeConflictStaged(
         topic,
         finalOpinionA,
         finalOpinionB,
         fruitA,
         fruitB,
-        (stage, prog, stageResult) => {
+        async (stage, prog, stageResult) => {
           setCurrentStage(stage);
           setProgress(prog);
 
           if (stageResult) {
             setStageResults(prev => [...prev, stageResult]);
-            // Narrate the one-line summary
-            Speech.speak(stageResult.oneLineSummary, {
-              rate: 0.85,
-              pitch: 1.05,
-              language: 'en-US'
-            });
+            // Narrate stage summaries based on payment mode
+            await speakText(stageResult.oneLineSummary, isPaid, newSessionToken);
           }
         },
         previousOpinionA && result ? result : undefined // Pass previous analysis if this is a follow-up
       );
 
+      setSessionToken(newSessionToken);
+      setIsPaidConversation(isPaid);
       setResult(analysis);
       
       // Save to history
@@ -359,11 +365,7 @@ function AppContent() {
 
       // Final narration
       setTimeout(() => {
-        Speech.speak(analysis.narration, {
-          rate: 0.85,
-          pitch: 1.05,
-          language: 'en-US'
-        });
+        speakText(analysis.narration, isPaid, newSessionToken);
       }, 1000);
 
     } catch (error: any) {
@@ -422,8 +424,54 @@ function AppContent() {
     }
   };
 
-  const stopAudio = () => {
+  const speakText = async (text: string, isPaid: boolean, token: string | null) => {
+    try {
+      // Stop any current audio
+      await stopAudio();
+
+      if (isPaid && token) {
+        // Use Google Cloud TTS for paid conversations
+        const ttsResult = await generateTTS(text, token);
+        
+        if (ttsResult.isPaid && ttsResult.audioBase64) {
+          // Play the high-quality audio
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: `data:audio/mp3;base64,${ttsResult.audioBase64}` },
+            { shouldPlay: true }
+          );
+          setAudioSound(sound);
+          return;
+        }
+      }
+      
+      // Fallback to built-in TTS for free conversations or if Google TTS fails
+      Speech.speak(text, {
+        rate: 0.85,
+        pitch: 1.05,
+        language: 'en-US'
+      });
+    } catch (error) {
+      console.error('TTS error:', error);
+      // Final fallback to built-in
+      Speech.speak(text, {
+        rate: 0.85,
+        pitch: 1.05,
+        language: 'en-US'
+      });
+    }
+  };
+
+  const stopAudio = async () => {
     Speech.stop();
+    if (audioSound) {
+      try {
+        await audioSound.stopAsync();
+        await audioSound.unloadAsync();
+      } catch (e) {
+        console.error('Error stopping audio:', e);
+      }
+      setAudioSound(null);
+    }
   };
 
   return (
@@ -1027,7 +1075,7 @@ function AppContent() {
 
                     <View className="flex-row justify-center space-x-4 mt-4">
                       <TouchableOpacity
-                        onPress={() => Speech.speak(result.narration, { rate: 0.85, pitch: 1.05, language: 'en-US' })}
+                        onPress={() => speakText(result.narration, isPaidConversation, sessionToken)}
                         className="border-2 border-blue-500 px-6 py-2 rounded-full"
                         style={{ 
                           shadowColor: '#3b82f6', 
@@ -1036,7 +1084,7 @@ function AppContent() {
                           backgroundColor: 'rgba(59, 130, 246, 0.15)'
                         }}
                       >
-                        <Text className="text-blue-200 font-bold">🔊 Play</Text>
+                        <Text className="text-blue-200 font-bold">🔊 Play{isPaidConversation ? ' (Premium)' : ''}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity 
                         onPress={stopAudio} 

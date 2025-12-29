@@ -53,16 +53,23 @@ type ServerAction =
     | "conflict"
     | "supportQuery"
     | "support"
-    | "final";
+    | "final"
+    | "tts";
 
-const postModel = async (body: Record<string, any>): Promise<any> => {
+const postModel = async (body: Record<string, any>, sessionToken?: string): Promise<any> => {
     const deviceId = await getDeviceId();
+    const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-Device-Id": deviceId,
+    };
+    
+    if (sessionToken) {
+        headers["X-Session-Token"] = sessionToken;
+    }
+    
     const res = await fetch(GCF_TEXT_URL, {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "X-Device-Id": deviceId,
-        },
+        headers,
         body: JSON.stringify(body),
     });
     const contentType = res.headers.get("content-type") || "";
@@ -114,6 +121,34 @@ const sanitizeBullets = (bullets: any): string[] => {
     });
 };
 
+export const generateTTS = async (text: string, sessionToken?: string): Promise<{ isPaid: boolean; audioBase64: string | null }> => {
+    const deviceId = await getDeviceId();
+    const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "X-Device-Id": deviceId,
+    };
+    
+    if (sessionToken) {
+        headers["X-Session-Token"] = sessionToken;
+    }
+    
+    const res = await fetch(GCF_TEXT_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+            action: "tts",
+            payload: { text }
+        }),
+    });
+    
+    if (!res.ok) {
+        const bodyText = await res.text();
+        throw new Error(`TTS endpoint HTTP ${res.status} ${res.statusText}. Body: ${bodyText}`);
+    }
+    
+    return await res.json();
+};
+
 export const analyzeConflictStaged = async (
     topic: string,
     opinionA: string,
@@ -122,7 +157,7 @@ export const analyzeConflictStaged = async (
     fruitB: { name: string; emoji: string },
     onProgress: ProgressCallback,
     previousAnalysis?: AnalysisResult
-): Promise<AnalysisResult> => {
+): Promise<{ result: AnalysisResult; sessionToken: string; isPaid: boolean }> => {
     try {
         // Start conversation and consume 1 credit upfront
         const deviceId = await getDeviceId();
@@ -140,7 +175,7 @@ export const analyzeConflictStaged = async (
             throw new Error(`Failed to start conversation: ${startRes.status} ${errorText}`);
         }
         
-        const { sessionToken } = await startRes.json();
+        const { sessionToken, isPaid } = await startRes.json();
         
         // Stage 1: Initial Analysis
         onProgress("Initial Analysis", 1 / 4);
@@ -261,16 +296,20 @@ export const analyzeConflictStaged = async (
         const perspectiveBLinks = resultsB.slice(0, 2).map(r => ({ title: r.title, url: r.url }));
 
         return {
-            topic,
-            perspectiveALabel: `${fruitA.name} ${fruitA.emoji}`,
-            perspectiveBLabel: `${fruitB.name} ${fruitB.emoji}`,
-            summaryBullets: sanitizeBullets(final.summaryBullets),
-            perspectiveABullets: sanitizeBullets(final.perspectiveABullets),
-            perspectiveBBullets: sanitizeBullets(final.perspectiveBBullets),
-            narration: final.narration,
-            summaryLinks,
-            perspectiveALinks,
-            perspectiveBLinks,
+            result: {
+                topic,
+                perspectiveALabel: `${fruitA.name} ${fruitA.emoji}`,
+                perspectiveBLabel: `${fruitB.name} ${fruitB.emoji}`,
+                summaryBullets: sanitizeBullets(final.summaryBullets),
+                perspectiveABullets: sanitizeBullets(final.perspectiveABullets),
+                perspectiveBBullets: sanitizeBullets(final.perspectiveBBullets),
+                narration: final.narration,
+                summaryLinks,
+                perspectiveALinks,
+                perspectiveBLinks,
+            },
+            sessionToken,
+            isPaid
         };
     } catch (error) {
         console.error("Staged analysis failed:", error);

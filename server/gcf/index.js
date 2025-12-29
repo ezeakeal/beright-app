@@ -6,6 +6,7 @@ const admin = require('firebase-admin');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { buildPromptFromAction } = require('./prompts');
 const Stripe = require('stripe');
+const textToSpeech = require('@google-cloud/text-to-speech');
 try { admin.app(); } catch { admin.initializeApp(); }
 // Use named database if provided (e.g., FIRESTORE_DB=beright-db), else default
 const db = getFirestore(admin.app(), process.env.FIRESTORE_DB || '(default)');
@@ -141,7 +142,7 @@ async function consumeOneRequestCredit(deviceId) {
         },
         { merge: true }
       );
-      return { mode: 'free' };
+      return { mode: 'free', isPaid: false };
     }
 
     if (paidCredits > 0) {
@@ -154,7 +155,7 @@ async function consumeOneRequestCredit(deviceId) {
         },
         { merge: true }
       );
-      return { mode: 'paid' };
+      return { mode: 'paid', isPaid: true };
     }
 
     const err = new Error('NO_CREDITS');
@@ -305,26 +306,28 @@ exports.generateText = async (req, res) => {
 
     // Start a new conversation: consume 1 credit and return a session token for subsequent calls
     if ((action || '').toLowerCase() === 'startconversation') {
-      await consumeOneRequestCredit(deviceId);
+      const creditResult = await consumeOneRequestCredit(deviceId);
       
       // Generate a simple session token (valid for 10 minutes)
       const sessionToken = `${deviceId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       const expiresAt = Date.now() + (10 * 60 * 1000); // 10 minutes
       
-      // Store session in Firestore
+      // Store session in Firestore with payment mode
       await db.collection('conversationSessions').doc(sessionToken).set({
         deviceId,
+        isPaid: creditResult.isPaid,
         createdAt: FieldValue.serverTimestamp(),
         expiresAt,
       });
       
       const credits = await getCredits(deviceId);
-      return res.json({ ok: true, sessionToken, credits });
+      return res.json({ ok: true, sessionToken, credits, isPaid: creditResult.isPaid });
     }
 
     // Check if this request has a valid session token (for multi-stage conversations)
     const sessionToken = req.headers['x-session-token'];
     let hasValidSession = false;
+    let sessionIsPaid = false;
     
     if (sessionToken) {
       const sessionSnap = await db.collection('conversationSessions').doc(String(sessionToken)).get();
@@ -332,13 +335,16 @@ exports.generateText = async (req, res) => {
         const session = sessionSnap.data();
         if (session.deviceId === deviceId && session.expiresAt > Date.now()) {
           hasValidSession = true;
+          sessionIsPaid = session.isPaid || false;
         }
       }
     }
 
     // Consume exactly 1 request credit for all model actions (unless covered by session)
+    let requestIsPaid = sessionIsPaid;
     if (!hasValidSession) {
-      await consumeOneRequestCredit(deviceId);
+      const creditResult = await consumeOneRequestCredit(deviceId);
+      requestIsPaid = creditResult.isPaid;
     }
 
     // Handle audio transcription and extraction action
@@ -425,6 +431,47 @@ Return ONLY a JSON object with this exact structure:
       const parsed = JSON.parse(clean);
       
       return res.json(parsed);
+    }
+
+    // Generate TTS audio (only for paid credits)
+    if (action === 'tts') {
+      const { text } = payload;
+      if (!text) {
+        return res.status(400).json({ error: 'Missing text parameter' });
+      }
+
+      // Check if this is a paid request
+      if (!sessionIsPaid && !requestIsPaid) {
+        // Return empty response - client will use built-in TTS
+        return res.json({ isPaid: false, audioBase64: null });
+      }
+
+      try {
+        const ttsClient = new textToSpeech.TextToSpeechClient();
+        
+        const request = {
+          input: { text: String(text).slice(0, 5000) }, // Limit to 5000 chars
+          voice: {
+            languageCode: 'en-US',
+            name: 'en-US-Neural2-J', // High-quality Neural2 voice
+            ssmlGender: 'NEUTRAL',
+          },
+          audioConfig: {
+            audioEncoding: 'MP3',
+            speakingRate: 0.90,
+            pitch: 0.0,
+          },
+        };
+
+        const [response] = await ttsClient.synthesizeSpeech(request);
+        const audioBase64 = response.audioContent.toString('base64');
+        
+        return res.json({ isPaid: true, audioBase64 });
+      } catch (ttsError) {
+        console.error('[TTS] Error generating audio:', ttsError);
+        // Fallback to no audio on TTS error
+        return res.json({ isPaid: true, audioBase64: null, error: 'TTS generation failed' });
+      }
     }
 
     const finalPrompt = prompt ?? buildPromptFromAction(action, payload);
