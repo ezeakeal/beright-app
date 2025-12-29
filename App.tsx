@@ -10,7 +10,8 @@ import { LoginModal } from "./components/LoginModal";
 import { ConversationListenerButton } from "./components/ConversationListenerButton";
 import { PerspectiveInputModal } from "./components/PerspectiveInputModal";
 import { analyzeConflictStaged, AnalysisResult, getRandomFruitPair, StageResult, generateTTS } from "./utils/gemini";
-import { saveConversation, getPastConversations, StoredConversation } from "./utils/storage";
+import { saveConversation, getPastConversations, StoredConversation, markConversationAsReported, isConversationReported } from "./utils/storage";
+import { generateAndSharePDF } from "./utils/pdfExport";
 import Animated, { FadeIn, FadeInDown, FadeOut } from "react-native-reanimated";
 import * as Speech from "expo-speech";
 import { Audio } from "expo-av";
@@ -85,6 +86,10 @@ function AppContent() {
   const [isToppingUp, setIsToppingUp] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [topUpQuantity, setTopUpQuantity] = useState(5);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [conversationReported, setConversationReported] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const perspectiveCardSize = Math.min(Math.max(windowWidth - 56, 220), 360);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const merchantCountry = (Constants.expoConfig?.extra as any)?.STRIPE_MERCHANT_COUNTRY ?? "IE";
@@ -97,6 +102,8 @@ function AppContent() {
     setCreditsNonce((n) => n + 1);
     setSessionToken(null);
     setIsPaidConversation(false);
+    setConversationReported(false);
+    setCurrentConversationId(null);
     // Clear audio cache when going home
     audioCache.current.clear();
   };
@@ -278,13 +285,19 @@ function AppContent() {
     setAppState("HISTORY");
   };
 
-  const loadConversation = (conv: StoredConversation) => {
+  const loadConversation = async (conv: StoredConversation) => {
     setTopic(conv.topic);
     setOpinionA(conv.opinionA);
     setOpinionB(conv.opinionB);
     setFruitA(conv.fruitA);
     setFruitB(conv.fruitB);
     setResult(conv.result);
+    setCurrentConversationId(conv.id);
+    
+    // Check if this conversation has been reported
+    const isReported = await isConversationReported(conv.id);
+    setConversationReported(isReported);
+    
     setAppState("RESULTS");
   };
 
@@ -312,6 +325,7 @@ function AppContent() {
     setPreviousOpinionB(opinionB);
     setFollowUpA("");
     setFollowUpB("");
+    setConversationReported(false);
     setAppState("FOLLOWUP");
   };
 
@@ -364,8 +378,8 @@ function AppContent() {
       setIsPaidConversation(isPaid);
       setResult(analysis);
       
-      // Save to history
-      await saveConversation({
+      // Save to history and get conversation ID
+      const conversationId = await saveConversation({
         topic,
         opinionA: finalOpinionA,
         opinionB: finalOpinionB,
@@ -373,6 +387,9 @@ function AppContent() {
         fruitA: fruitA!,
         fruitB: fruitB!
       });
+      
+      setCurrentConversationId(conversationId);
+      setConversationReported(false); // New conversation not reported yet
 
       setAppState("RESULTS");
 
@@ -510,6 +527,28 @@ function AppContent() {
         // Silent
       }
       setAudioSound(null);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!result || !fruitA || !fruitB) return;
+    
+    try {
+      await generateAndSharePDF({
+        topic,
+        result,
+        fruitAName: fruitA.name,
+        fruitBName: fruitB.name,
+        fruitAEmoji: fruitA.emoji,
+        fruitBEmoji: fruitB.emoji,
+      });
+    } catch (error: any) {
+      console.error('PDF export error:', error);
+      Alert.alert(
+        "Export Failed",
+        "Unable to generate PDF. Please try again.",
+        [{ text: "OK" }]
+      );
     }
   };
 
@@ -1085,11 +1124,29 @@ function AppContent() {
             )}
 
             {appState === "RESULTS" && result && (
-              <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-                <Animated.View entering={FadeIn.delay(300)} className="p-6">
-                  {/* Final Summary Card */}
-                  <View className="bg-black/80 border border-zinc-800/50 rounded-3xl p-6 mb-6"
-                        style={{ shadowColor: '#3b82f6', shadowOpacity: 0.1, shadowRadius: 25 }}>
+              <View className="flex-1">
+                {/* Report Button - Top Right */}
+                {!conversationReported && (
+                  <View className="absolute top-4 right-4 z-50">
+                    <TouchableOpacity
+                      onPress={() => setShowReportModal(true)}
+                      className="bg-black/70 border-2 border-blue-500/40 rounded-full p-3"
+                      style={{ 
+                        shadowColor: '#3b82f6', 
+                        shadowOpacity: 0.3, 
+                        shadowRadius: 15
+                      }}
+                    >
+                      <Text style={{ fontSize: 20 }}>🚩</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+                  <Animated.View entering={FadeIn.delay(300)} className="p-6">
+                    {/* Final Summary Card */}
+                    <View className="bg-black/80 border border-zinc-800/50 rounded-3xl p-6 mb-6"
+                          style={{ shadowColor: '#3b82f6', shadowOpacity: 0.1, shadowRadius: 25 }}>
                     <Text className="text-center text-zinc-600 font-medium uppercase tracking-widest text-xs mb-1">Topic</Text>
                     <Text className="text-center text-2xl font-bold text-blue-300/70 mb-4">{result.topic}</Text>
 
@@ -1145,6 +1202,20 @@ function AppContent() {
                         <Text className="text-zinc-300 font-bold">Stop</Text>
                       </TouchableOpacity>
                     </View>
+
+                    {/* Export PDF Button */}
+                    <TouchableOpacity
+                      onPress={handleExportPDF}
+                      className="border-2 border-emerald-500 px-6 py-3 rounded-full mt-4"
+                      style={{ 
+                        shadowColor: '#10b981', 
+                        shadowOpacity: 0.5, 
+                        shadowRadius: 20,
+                        backgroundColor: 'rgba(16, 185, 129, 0.15)'
+                      }}
+                    >
+                      <Text className="text-emerald-200 font-bold text-center">📄 Export & Share PDF</Text>
+                    </TouchableOpacity>
                   </View>
 
                   {/* Fruit Perspectives Side-by-Side */}
@@ -1223,9 +1294,129 @@ function AppContent() {
                   </View>
                 </Animated.View>
               </ScrollView>
+            </View>
             )}
           </SafeAreaView>
         </View>
+        
+        {/* Report Content Modal */}
+        <Modal
+          visible={showReportModal}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowReportModal(false)}
+        >
+          <View className="flex-1 bg-black/90 justify-center items-center p-6">
+            <View className="bg-zinc-900 border-2 border-blue-500/60 rounded-3xl p-6 w-full max-w-md">
+              {!reportSubmitted ? (
+                <>
+                  <View className="items-center mb-4">
+                    <Text style={{ fontSize: 48 }}>🚩</Text>
+                    <Text className="text-2xl font-bold text-blue-300 mt-2">Report Content</Text>
+                  </View>
+
+                  <Text className="text-white/80 text-base leading-relaxed mb-4">
+                    Help us improve! By submitting feedback, the following information will be stored for review:
+                  </Text>
+
+                  <View className="bg-black/50 border border-blue-500/30 rounded-2xl p-4 mb-6">
+                    <Text className="text-blue-200/90 text-sm mb-2">• Topic: {topic}</Text>
+                    <Text className="text-blue-200/90 text-sm mb-2">• Both perspectives</Text>
+                    <Text className="text-blue-200/90 text-sm">• Analysis results</Text>
+                  </View>
+
+                  <Text className="text-white/60 text-sm leading-relaxed mb-6">
+                    Your feedback helps us improve the quality and accuracy of our AI-generated content.
+                  </Text>
+
+                  <View className="flex-row space-x-3">
+                    <TouchableOpacity
+                      onPress={() => setShowReportModal(false)}
+                      className="flex-1 border-2 border-zinc-600 py-3 rounded-full"
+                      style={{ backgroundColor: 'rgba(113, 113, 122, 0.2)' }}
+                    >
+                      <Text className="text-zinc-300 text-center font-bold">Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={async () => {
+                        try {
+                          // Submit report to backend
+                          const reportData = {
+                            conversationId: currentConversationId,
+                            topic,
+                            opinionA,
+                            opinionB,
+                            result,
+                            timestamp: new Date().toISOString(),
+                            deviceId
+                          };
+
+                          await fetch(`${SERVER_URL}/report-content`, {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'X-Device-Id': deviceId || 'unknown'
+                            },
+                            body: JSON.stringify(reportData)
+                          });
+
+                          // Mark conversation as reported in local storage
+                          if (currentConversationId) {
+                            await markConversationAsReported(currentConversationId);
+                          }
+                          
+                          setConversationReported(true);
+                          setReportSubmitted(true);
+                        } catch (error) {
+                          console.error('Error submitting report:', error);
+                          Alert.alert('Error', 'Failed to submit report. Please try again.');
+                        }
+                      }}
+                      className="flex-1 border-2 border-blue-500 py-3 rounded-full"
+                      style={{ 
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                        shadowColor: '#3b82f6', 
+                        shadowOpacity: 0.5, 
+                        shadowRadius: 15
+                      }}
+                    >
+                      <Text className="text-blue-200 text-center font-bold">Submit Feedback</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View className="items-center mb-4">
+                    <Text style={{ fontSize: 64 }}>✅</Text>
+                    <Text className="text-2xl font-bold text-emerald-300 mt-2">Thank You!</Text>
+                  </View>
+
+                  <Text className="text-white/80 text-base leading-relaxed text-center mb-6">
+                    Your report has been submitted. We appreciate your help in improving our content quality.
+                  </Text>
+
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowReportModal(false);
+                      setReportSubmitted(false);
+                    }}
+                    className="border-2 border-emerald-500 py-3 rounded-full"
+                    style={{ 
+                      backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                      shadowColor: '#10b981', 
+                      shadowOpacity: 0.5, 
+                      shadowRadius: 15
+                    }}
+                  >
+                    <Text className="text-emerald-200 text-center font-bold">Close</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
+
         <InfoModal visible={showInfo} onClose={() => setShowInfo(false)} />
         <LoginModal visible={showLogin} onClose={() => setShowLogin(false)} />
       </LinearGradient>

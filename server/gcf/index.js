@@ -165,6 +165,16 @@ async function consumeOneRequestCredit(deviceId) {
 }
 
 exports.generateText = async (req, res) => {
+  // Simple routing for different endpoints
+  if (req.path === '/report-content' || req.url === '/report-content') {
+    try {
+      return await exports.reportContent(req, res);
+    } catch (error) {
+      console.error('[ROUTING] Error routing to reportContent:', error);
+      return res.status(500).json({ error: 'Internal routing error' });
+    }
+  }
+
   // Basic CORS for web and React Native web; mobile native ignores CORS.
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -606,4 +616,48 @@ exports.stripeWebhook = async (req, res) => {
   return res.json({ received: true });
 };
 
+// Report offensive AI-generated content
+exports.reportContent = async (req, res) => {
+  console.log('[REPORT] reportContent called, method:', req.method, 'path:', req.path);
+  
+  res.set('Access-Control-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') {
+    res.set('Access-Control-Allow-Methods', 'POST');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, X-Device-Id');
+    return res.status(204).send('');
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    console.log('[REPORT] Processing report, body:', JSON.stringify(req.body).substring(0, 200));
+    const { conversationId, topic, opinionA, opinionB, result, timestamp, deviceId } = req.body;
+
+    // Store report in Firestore
+    const reportRef = db.collection('content_reports').doc();
+    await reportRef.set({
+      conversationId: conversationId || null,
+      topic,
+      opinionA,
+      opinionB,
+      result: JSON.stringify(result), // Store as string to avoid nested object limits
+      timestamp,
+      deviceId: deviceId || 'unknown',
+      reportedAt: FieldValue.serverTimestamp(),
+      reviewed: false
+    });
+
+    console.log(`[REPORT] Content reported by device ${deviceId}, conversation ${conversationId}, report ID: ${reportRef.id}`);
+
+    return res.status(200).json({ 
+      success: true, 
+      reportId: reportRef.id 
+    });
+  } catch (error) {
+    console.error('[REPORT] Error storing report:', error);
+    return res.status(500).json({ error: 'Failed to store report', details: error.message });
+  }
+};
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, Modal, TouchableOpacity, ScrollView } from "react-native";
+import { View, Text, Modal, TouchableOpacity, ScrollView, Linking } from "react-native";
 
 interface InfoModalProps {
   visible: boolean;
@@ -50,6 +50,21 @@ export const InfoModal: React.FC<InfoModalProps> = ({ visible, onClose }) => {
               payment goes directly to carbon capture initiatives. This means using B'right actively 
               helps remove CO₂ from the atmosphere, making our app carbon negative.
             </Text>
+
+            <Text className="text-white/90 text-lg font-bold mb-3">AI Environmental Impact</Text>
+            <Text className="text-zinc-400 mb-3 leading-relaxed">
+              We're committed to transparency about our AI's environmental footprint. According to Google's 
+              research, a typical AI text prompt uses about as much energy as watching TV for 9 seconds 
+              — and we're constantly working to reduce this further.
+            </Text>
+            <TouchableOpacity
+              onPress={() => Linking.openURL('https://cloud.google.com/blog/products/infrastructure/measuring-the-environmental-impact-of-ai-inference/')}
+              className="mb-6"
+            >
+              <Text className="text-blue-300/80 underline text-sm">
+                Read Google's environmental impact report →
+              </Text>
+            </TouchableOpacity>
           </ScrollView>
 
           <View className="p-4 border-t border-zinc-800/50 bg-black/90">

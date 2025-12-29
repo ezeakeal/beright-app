@@ -14,7 +14,7 @@ export interface StoredConversation {
 
 const STORAGE_KEY = 'BRIGHT_PAST_CONVERSATIONS';
 
-export const saveConversation = async (conversation: Omit<StoredConversation, 'id' | 'timestamp'>): Promise<void> => {
+export const saveConversation = async (conversation: Omit<StoredConversation, 'id' | 'timestamp'>): Promise<string> => {
   try {
     const existingData = await AsyncStorage.getItem(STORAGE_KEY);
     const conversations: StoredConversation[] = existingData ? JSON.parse(existingData) : [];
@@ -34,8 +34,10 @@ export const saveConversation = async (conversation: Omit<StoredConversation, 'i
     }
 
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+    return newConversation.id;
   } catch (error) {
     console.error('Failed to save conversation:', error);
+    return Date.now().toString(); // Return a fallback ID
   }
 };
 
@@ -54,6 +56,33 @@ export const clearHistory = async (): Promise<void> => {
     await AsyncStorage.removeItem(STORAGE_KEY);
   } catch (error) {
     console.error('Failed to clear history:', error);
+  }
+};
+
+const REPORTED_CONVERSATIONS_KEY = 'BRIGHT_REPORTED_CONVERSATIONS';
+
+export const markConversationAsReported = async (conversationId: string): Promise<void> => {
+  try {
+    const existingData = await AsyncStorage.getItem(REPORTED_CONVERSATIONS_KEY);
+    const reportedIds: string[] = existingData ? JSON.parse(existingData) : [];
+    
+    if (!reportedIds.includes(conversationId)) {
+      reportedIds.push(conversationId);
+      await AsyncStorage.setItem(REPORTED_CONVERSATIONS_KEY, JSON.stringify(reportedIds));
+    }
+  } catch (error) {
+    console.error('Failed to mark conversation as reported:', error);
+  }
+};
+
+export const isConversationReported = async (conversationId: string): Promise<boolean> => {
+  try {
+    const existingData = await AsyncStorage.getItem(REPORTED_CONVERSATIONS_KEY);
+    const reportedIds: string[] = existingData ? JSON.parse(existingData) : [];
+    return reportedIds.includes(conversationId);
+  } catch (error) {
+    console.error('Failed to check if conversation is reported:', error);
+    return false;
   }
 };
 
