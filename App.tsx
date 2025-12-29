@@ -197,11 +197,7 @@ function AppContent() {
       setShowTopUp(false);
       await startTopUp(topUpQuantity);
       
-      Alert.alert(
-        "Success! 🎉",
-        `You've added ${topUpQuantity} credit${topUpQuantity > 1 ? 's' : ''} to your account.`,
-        [{ text: "Great!" }]
-      );
+      // Success - credits will refresh automatically, no alert needed
     } catch (e: any) {
       console.error(e);
       
