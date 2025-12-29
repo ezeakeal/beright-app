@@ -121,7 +121,14 @@ const sanitizeBullets = (bullets: any): string[] => {
     });
 };
 
-export const generateTTS = async (text: string, sessionToken?: string): Promise<{ isPaid: boolean; audioBase64: string | null }> => {
+export const generateTTS = async (text: string, sessionToken?: string): Promise<{ isPaid: boolean; audioBase64: string | null; error?: string }> => {
+    console.log('[TTS Client] 🎙️ Requesting TTS generation:', {
+        textLength: text.length,
+        textPreview: text.slice(0, 100),
+        hasSessionToken: !!sessionToken
+    });
+
+    const startTime = Date.now();
     const deviceId = await getDeviceId();
     const headers: Record<string, string> = {
         "Content-Type": "application/json",
@@ -132,21 +139,66 @@ export const generateTTS = async (text: string, sessionToken?: string): Promise<
         headers["X-Session-Token"] = sessionToken;
     }
     
-    const res = await fetch(GCF_TEXT_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-            action: "tts",
-            payload: { text }
-        }),
-    });
-    
-    if (!res.ok) {
-        const bodyText = await res.text();
-        throw new Error(`TTS endpoint HTTP ${res.status} ${res.statusText}. Body: ${bodyText}`);
+    try {
+        // Add timeout to prevent hanging
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            console.warn('[TTS Client] ⏱️ Request timeout (15s) - aborting...');
+            controller.abort();
+        }, 15000); // 15 second timeout
+
+        const res = await fetch(GCF_TEXT_URL, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+                action: "tts",
+                payload: { text }
+            }),
+            signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        const duration = Date.now() - startTime;
+        
+        if (!res.ok) {
+            const bodyText = await res.text();
+            console.error('[TTS Client] ❌ HTTP error:', {
+                status: res.status,
+                statusText: res.statusText,
+                duration: `${duration}ms`,
+                body: bodyText
+            });
+            throw new Error(`TTS endpoint HTTP ${res.status} ${res.statusText}. Body: ${bodyText}`);
+        }
+        
+        const result = await res.json();
+        console.log('[TTS Client] ✅ Response received:', {
+            duration: `${duration}ms`,
+            isPaid: result.isPaid,
+            hasAudio: !!result.audioBase64,
+            audioSize: result.audioBase64 ? `${(result.audioBase64.length / 1024).toFixed(2)}KB` : 'none',
+            error: result.error
+        });
+        
+        return result;
+    } catch (error: any) {
+        const duration = Date.now() - startTime;
+        
+        if (error.name === 'AbortError') {
+            console.error('[TTS Client] ⏱️ Request aborted due to timeout:', {
+                duration: `${duration}ms`,
+                timeoutSeconds: 15
+            });
+        } else {
+            console.error('[TTS Client] ❌ Request failed:', {
+                duration: `${duration}ms`,
+                error: error?.message || String(error),
+                name: error?.name,
+                stack: error?.stack
+            });
+        }
+        throw error;
     }
-    
-    return await res.json();
 };
 
 export const analyzeConflictStaged = async (

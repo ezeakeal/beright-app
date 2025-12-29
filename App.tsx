@@ -340,12 +340,23 @@ function AppContent() {
 
           if (stageResult) {
             setStageResults(prev => [...prev, stageResult]);
+            console.log('[App] 📊 Stage completed:', {
+              stage: stageResult.stageName,
+              isPaid,
+              hasSessionToken: !!newSessionToken
+            });
             // Narrate stage summaries based on payment mode
             await speakText(stageResult.oneLineSummary, isPaid, newSessionToken);
           }
         },
         previousOpinionA && result ? result : undefined // Pass previous analysis if this is a follow-up
       );
+
+      console.log('[App] ✅ Analysis complete:', {
+        isPaid,
+        hasSessionToken: !!newSessionToken,
+        narrationLength: analysis.narration.length
+      });
 
       setSessionToken(newSessionToken);
       setIsPaidConversation(isPaid);
@@ -425,34 +436,78 @@ function AppContent() {
   };
 
   const speakText = async (text: string, isPaid: boolean, token: string | null) => {
+    console.log('[TTS App] 🔊 speakText called:', {
+      textLength: text.length,
+      textPreview: text.slice(0, 100),
+      isPaid,
+      hasToken: !!token,
+      willUseGoogleTTS: isPaid && !!token
+    });
+
     try {
       // Stop any current audio
       await stopAudio();
 
       if (isPaid && token) {
-        // Use Google Cloud TTS for paid conversations
-        const ttsResult = await generateTTS(text, token);
+        console.log('[TTS App] 💳 Paid conversation - attempting Google Cloud TTS...');
+        const ttsStartTime = Date.now();
         
-        if (ttsResult.isPaid && ttsResult.audioBase64) {
-          // Play the high-quality audio
-          const { sound } = await Audio.Sound.createAsync(
-            { uri: `data:audio/mp3;base64,${ttsResult.audioBase64}` },
-            { shouldPlay: true }
-          );
-          setAudioSound(sound);
-          return;
+        try {
+          const ttsResult = await generateTTS(text, token);
+          const ttsDuration = Date.now() - ttsStartTime;
+          
+          console.log('[TTS App] Response from generateTTS:', {
+            duration: `${ttsDuration}ms`,
+            isPaid: ttsResult.isPaid,
+            hasAudio: !!ttsResult.audioBase64,
+            error: ttsResult.error
+          });
+          
+          if (ttsResult.isPaid && ttsResult.audioBase64) {
+            console.log('[TTS App] 🎵 Playing Google TTS audio...');
+            const playStartTime = Date.now();
+            
+            const { sound } = await Audio.Sound.createAsync(
+              { uri: `data:audio/mp3;base64,${ttsResult.audioBase64}` },
+              { shouldPlay: true }
+            );
+            
+            const playDuration = Date.now() - playStartTime;
+            console.log('[TTS App] ✅ Google TTS audio loaded and playing:', {
+              loadDuration: `${playDuration}ms`,
+              totalDuration: `${Date.now() - ttsStartTime}ms`
+            });
+            
+            setAudioSound(sound);
+            return;
+          } else {
+            console.warn('[TTS App] ⚠️ Google TTS returned no audio, falling back to built-in:', {
+              isPaid: ttsResult.isPaid,
+              error: ttsResult.error
+            });
+          }
+        } catch (ttsError: any) {
+          console.error('[TTS App] ❌ Google TTS failed, falling back to built-in:', {
+            error: ttsError?.message || String(ttsError),
+            name: ttsError?.name,
+            duration: `${Date.now() - ttsStartTime}ms`
+          });
         }
+      } else {
+        console.log('[TTS App] 🆓 Free conversation - using built-in TTS');
       }
       
       // Fallback to built-in TTS for free conversations or if Google TTS fails
+      console.log('[TTS App] 📱 Using built-in expo-speech TTS');
       Speech.speak(text, {
         rate: 0.85,
         pitch: 1.05,
         language: 'en-US'
       });
     } catch (error) {
-      console.error('TTS error:', error);
+      console.error('[TTS App] ❌ Final error in speakText:', error);
       // Final fallback to built-in
+      console.log('[TTS App] 📱 Final fallback to built-in TTS');
       Speech.speak(text, {
         rate: 0.85,
         pitch: 1.05,
@@ -462,13 +517,15 @@ function AppContent() {
   };
 
   const stopAudio = async () => {
+    console.log('[TTS App] 🛑 Stopping audio...', { hasAudioSound: !!audioSound });
     Speech.stop();
     if (audioSound) {
       try {
         await audioSound.stopAsync();
         await audioSound.unloadAsync();
+        console.log('[TTS App] ✅ Audio sound stopped and unloaded');
       } catch (e) {
-        console.error('Error stopping audio:', e);
+        console.error('[TTS App] ⚠️ Error stopping audio:', e);
       }
       setAudioSound(null);
     }
@@ -623,6 +680,13 @@ function AppContent() {
                       <Text className="text-zinc-400 mb-4">
                         Choose how many conversation credits to buy.
                       </Text>
+
+                      <View className="bg-emerald-900/15 border border-emerald-500/30 rounded-2xl p-4 mb-4">
+                        <Text className="text-emerald-200/90 text-sm font-bold mb-1">🌍 Carbon Negative</Text>
+                        <Text className="text-emerald-200/70 text-xs leading-relaxed">
+                          25% of your payment goes to carbon capture. Using B'right helps remove CO₂ from the atmosphere.
+                        </Text>
+                      </View>
 
                       <View className="flex-row items-center justify-between bg-black/60 border border-zinc-800/50 rounded-2xl p-4 mb-5">
                         <TouchableOpacity

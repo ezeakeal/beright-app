@@ -43,6 +43,13 @@ export const InfoModal: React.FC<InfoModalProps> = ({ visible, onClose }) => {
               Google Sign-In is used solely for managing authentication and subscription tiers to provide 
               access to advanced AI models. Your conversations remain private and are not harvested.
             </Text>
+
+            <Text className="text-white/90 text-lg font-bold mb-3">Carbon Negative</Text>
+            <Text className="text-zinc-400 mb-6 leading-relaxed">
+              Every conversation matters to us and to the planet. When you purchase credits, 25% of your 
+              payment goes directly to carbon capture initiatives. This means using B'right actively 
+              helps remove CO₂ from the atmosphere, making our app carbon negative.
+            </Text>
           </ScrollView>
 
           <View className="p-4 border-t border-zinc-800/50 bg-black/90">

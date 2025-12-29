@@ -436,15 +436,27 @@ Return ONLY a JSON object with this exact structure:
     // Generate TTS audio (only for paid credits)
     if (action === 'tts') {
       const { text } = payload;
+      console.log('[TTS] Request received:', {
+        textLength: text?.length || 0,
+        textPreview: String(text || '').slice(0, 100),
+        sessionIsPaid,
+        requestIsPaid,
+        hasSessionToken: !!sessionToken
+      });
+
       if (!text) {
+        console.log('[TTS] ❌ Missing text parameter');
         return res.status(400).json({ error: 'Missing text parameter' });
       }
 
       // Check if this is a paid request
       if (!sessionIsPaid && !requestIsPaid) {
-        // Return empty response - client will use built-in TTS
+        console.log('[TTS] ℹ️ Free conversation - returning null for built-in TTS fallback');
         return res.json({ isPaid: false, audioBase64: null });
       }
+
+      console.log('[TTS] 🎙️ Paid conversation - generating Google Cloud TTS audio...');
+      const ttsStartTime = Date.now();
 
       try {
         const ttsClient = new textToSpeech.TextToSpeechClient();
@@ -463,13 +475,29 @@ Return ONLY a JSON object with this exact structure:
           },
         };
 
+        console.log('[TTS] Calling Google Cloud TTS API...');
         const [response] = await ttsClient.synthesizeSpeech(request);
         const audioBase64 = response.audioContent.toString('base64');
+        const duration = Date.now() - ttsStartTime;
+        
+        console.log('[TTS] ✅ Google TTS generated successfully:', {
+          duration: `${duration}ms`,
+          audioSizeBytes: response.audioContent.length,
+          audioSizeKB: (response.audioContent.length / 1024).toFixed(2),
+          base64Length: audioBase64.length
+        });
         
         return res.json({ isPaid: true, audioBase64 });
       } catch (ttsError) {
-        console.error('[TTS] Error generating audio:', ttsError);
-        // Fallback to no audio on TTS error
+        const duration = Date.now() - ttsStartTime;
+        console.error('[TTS] ❌ Error generating audio:', {
+          duration: `${duration}ms`,
+          errorMessage: ttsError?.message || String(ttsError),
+          errorCode: ttsError?.code,
+          errorDetails: ttsError?.details,
+          stack: ttsError?.stack
+        });
+        // Fallback to no audio on TTS error - client will use built-in
         return res.json({ isPaid: true, audioBase64: null, error: 'TTS generation failed' });
       }
     }
