@@ -317,6 +317,10 @@ function AppContent() {
 
   const handleResolve = async () => {
     if (!opinionA.trim() || !opinionB.trim() || !fruitA || !fruitB) return;
+    
+    // Play button click sound
+    await playButtonClick();
+    
     setAppState("ANALYZING");
     setStageResults([]);
 
@@ -438,13 +442,27 @@ function AppContent() {
 
   const playProgressChime = async () => {
     try {
-      // Play a short, pleasant notification sound using expo-av
-      // Using a simple synthesized chime tone (C5 note, 200ms)
       const { sound } = await Audio.Sound.createAsync(
-        { 
-          uri: 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
-        },
-        { shouldPlay: true, volume: 0.3 }
+        require('./assets/sounds/progress-chime.wav'),
+        { shouldPlay: true, volume: 0.6 }
+      );
+      // Auto-unload after playing
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+      console.log('[TTS App] 🔔 Progress chime played');
+    } catch (error) {
+      console.log('[TTS App] ⚠️ Could not play progress chime:', error);
+    }
+  };
+
+  const playButtonClick = async () => {
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require('./assets/sounds/button-click.wav'),
+        { shouldPlay: true, volume: 0.4 }
       );
       // Auto-unload after playing
       sound.setOnPlaybackStatusUpdate((status) => {
@@ -453,8 +471,8 @@ function AppContent() {
         }
       });
     } catch (error) {
-      // Silent fallback if audio fails
-      console.log('[TTS App] 🔔 Progress indicator');
+      // Silent fallback
+      console.log('[TTS App] ⚠️ Could not play button click');
     }
   };
 
@@ -612,6 +630,7 @@ function AppContent() {
                   <TouchableOpacity
                     onPress={() => {
                       if (!canStartConversation) return;
+                      playButtonClick();
                       startNewConversation();
                     }}
                     disabled={!canStartConversation}
@@ -1177,7 +1196,10 @@ function AppContent() {
 
                     <View className="flex-row justify-center space-x-4 mt-4">
                       <TouchableOpacity
-                        onPress={() => speakText(result.narration, isPaidConversation, sessionToken)}
+                        onPress={() => {
+                          playButtonClick();
+                          speakText(result.narration, isPaidConversation, sessionToken);
+                        }}
                         className="border-2 border-blue-500 px-6 py-2 rounded-full"
                         style={{ 
                           shadowColor: '#3b82f6', 
