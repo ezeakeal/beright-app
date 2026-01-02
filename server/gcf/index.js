@@ -7,6 +7,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { buildPromptFromAction } = require('./prompts');
 const Stripe = require('stripe');
 const textToSpeech = require('@google-cloud/text-to-speech');
+const { google } = require('googleapis');
 try { admin.app(); } catch { admin.initializeApp(); }
 // Use named database if provided (e.g., FIRESTORE_DB=beright-db), else default
 const db = getFirestore(admin.app(), process.env.FIRESTORE_DB || '(default)');
@@ -70,18 +71,10 @@ function freePoolRef() {
 }
 
 // Report transaction to Google Play Alternative Billing API
-// This is a placeholder - actual implementation requires Google Play Developer API credentials
+// Requires: Service account with Play Console access (Release Manager role)
+// Will fail gracefully until API access is set up in Play Console
 async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amountTotal, currency) {
-  // Note: This is where you would integrate with Google Play's Alternative Billing API
-  // For now, we'll just mark it as reported in Firestore
-  // 
-  // In production, you would:
-  // 1. Use Google Play Developer API with service account credentials
-  // 2. Call the reporting endpoint with transaction details
-  // 3. Handle retries and errors appropriately
-  //
-  // API endpoint would be something like:
-  // POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{packageName}/externalTransactions
+  const packageName = 'com.vadix.berightapp';
   
   console.log('[GOOGLE_PLAY] Reporting transaction:', {
     externalTransactionId,
@@ -91,16 +84,83 @@ async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amo
     currency
   });
 
-  // For now, just mark as reported (simulating successful API call)
-  // TODO: Replace with actual Google Play API integration
-  const paymentRef = db.collection('payments').doc(externalTransactionId);
-  await paymentRef.update({
-    googlePlayReported: true,
-    googlePlayReportedAt: FieldValue.serverTimestamp(),
-    googlePlayReportAttempts: FieldValue.increment(1),
-  });
+  try {
+    // Initialize Google Auth using Application Default Credentials
+    // This uses the Cloud Function's service account automatically
+    const auth = new google.auth.GoogleAuth({
+      scopes: ['https://www.googleapis.com/auth/androidpublisher'],
+    });
 
-  console.log('[GOOGLE_PLAY] Transaction reported successfully:', externalTransactionId);
+    const androidPublisher = google.androidpublisher({
+      version: 'v3',
+      auth: auth,
+    });
+
+    // Calculate transaction time
+    const transactionTime = new Date().toISOString();
+
+    // Convert cents to units and nanos for Google's Money format
+    const units = Math.floor(amountTotal / 100);
+    const nanos = (amountTotal % 100) * 10000000; // Convert cents to nanos (1e-9)
+
+    // Report to Google Play Alternative Billing API
+    const response = await androidPublisher.externaltransactions.createexternaltransaction({
+      parent: `applications/${packageName}`,
+      externalTransactionId: externalTransactionId,
+      requestBody: {
+        externalTransactionId: externalTransactionId,
+        transactionTime: transactionTime,
+        transactionState: 'TRANSACTION_STATE_COMPLETED',
+        originalPreTaxAmount: {
+          currencyCode: currency.toUpperCase(),
+          units: units.toString(),
+          nanos: nanos,
+        },
+        taxAmount: {
+          currencyCode: currency.toUpperCase(),
+          units: '0',
+          nanos: 0,
+        },
+        packageName: packageName,
+      },
+    });
+
+    console.log('[GOOGLE_PLAY] API Response:', response.data);
+
+    // Mark as successfully reported in Firestore
+    const paymentRef = db.collection('payments').doc(externalTransactionId);
+    await paymentRef.update({
+      googlePlayReported: true,
+      googlePlayReportedAt: FieldValue.serverTimestamp(),
+      googlePlayReportAttempts: FieldValue.increment(1),
+      googlePlayResponseData: response.data,
+    });
+
+    console.log('[GOOGLE_PLAY] Transaction reported successfully:', externalTransactionId);
+    return response.data;
+
+  } catch (error) {
+    console.error('[GOOGLE_PLAY] Failed to report transaction:', {
+      externalTransactionId,
+      error: error?.message,
+      code: error?.code,
+      details: error?.response?.data || error?.details,
+    });
+    
+    // Track the failure but don't mark as reported
+    // This allows the retry job to pick it up
+    const paymentRef = db.collection('payments').doc(externalTransactionId);
+    await paymentRef.update({
+      googlePlayReportAttempts: FieldValue.increment(1),
+      lastReportAttemptAt: FieldValue.serverTimestamp(),
+      lastReportError: error?.message || String(error),
+      lastReportErrorCode: error?.code || null,
+    });
+    
+    // Re-throw so the calling code knows it failed
+    // But payment completion won't be blocked since we catch this
+    throw error;
+  }
 }
 
 async function getCredits(deviceId) {
