@@ -37,6 +37,7 @@ export default () => ({
     },
     owner: "danvagg",
     plugins: [
+      "expo-localization",
       [
         "@stripe/stripe-react-native",
         {

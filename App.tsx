@@ -19,6 +19,7 @@ import sampleTopics from "./data/sampleTopics.json";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Constants from "expo-constants";
 import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
+import { getDeviceRegionCode, isEeaCountryCode } from "./utils/eea";
 
 type ScreenState = "HOME" | "TOPIC" | "INPUT" | "ANALYZING" | "RESULTS" | "FOLLOWUP" | "HISTORY";
 type Credits = {
@@ -93,6 +94,19 @@ function AppContent() {
   const perspectiveCardSize = Math.min(Math.max(windowWidth - 56, 220), 360);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const merchantCountry = (Constants.expoConfig?.extra as any)?.STRIPE_MERCHANT_COUNTRY ?? "IE";
+  const deviceRegionCode = React.useMemo(() => getDeviceRegionCode(), []);
+  const isEea = React.useMemo(
+    () => (deviceRegionCode ? isEeaCountryCode(deviceRegionCode) : false),
+    [deviceRegionCode]
+  );
+
+  const showTopUpNotAvailable = React.useCallback(() => {
+    Alert.alert(
+      "Purchases unavailable",
+      `Top ups via Stripe are currently only available in the EEA.\n\nYour region: ${deviceRegionCode ?? "Unknown"}.`,
+      [{ text: "OK" }]
+    );
+  }, [deviceRegionCode]);
 
   const goHome = () => {
     resolveRunId.current += 1;
@@ -194,12 +208,21 @@ function AppContent() {
   );
 
   const handleTopUpPress = React.useCallback(async () => {
+    if (!isEea) {
+      showTopUpNotAvailable();
+      return;
+    }
     setShowTopUp(true);
-  }, []);
+  }, [isEea, showTopUpNotAvailable]);
 
   const handleConfirmTopUp = React.useCallback(async () => {
     try {
       if (isToppingUp) return;
+      if (!isEea) {
+        setShowTopUp(false);
+        showTopUpNotAvailable();
+        return;
+      }
       setIsToppingUp(true);
       setShowTopUp(false);
       await startTopUp(topUpQuantity);
@@ -229,7 +252,7 @@ function AppContent() {
     } finally {
       setIsToppingUp(false);
     }
-  }, [isToppingUp, startTopUp, topUpQuantity]);
+  }, [isEea, isToppingUp, showTopUpNotAvailable, startTopUp, topUpQuantity]);
 
   React.useEffect(() => {
     if (!deviceId) return;
@@ -415,6 +438,10 @@ function AppContent() {
               style: "default",
               onPress: () => {
                 setAppState("HOME");
+                if (!isEea) {
+                  showTopUpNotAvailable();
+                  return;
+                }
                 setShowTopUp(true);
               }
             }
@@ -648,14 +675,14 @@ function AppContent() {
 
                           <TouchableOpacity
                             onPress={handleTopUpPress}
-                            disabled={!deviceId || isToppingUp}
+                            disabled={!deviceId || isToppingUp || !isEea}
                             className="border border-amber-500/50 px-4 py-2 rounded-full"
                             style={{
                               shadowColor: '#f59e0b',
                               shadowOpacity: 0.25,
                               shadowRadius: 12,
                               backgroundColor: 'rgba(245, 158, 11, 0.10)',
-                              opacity: deviceId && !isToppingUp ? 1 : 0.5,
+                              opacity: deviceId && !isToppingUp && isEea ? 1 : 0.5,
                             }}
                           >
                             <Text className="text-amber-200/90 font-bold">{isToppingUp ? "Opening…" : "Top up"}</Text>
@@ -739,8 +766,8 @@ function AppContent() {
                       <TouchableOpacity
                         onPress={handleConfirmTopUp}
                         className="border-2 border-amber-500/70 bg-amber-500/10 py-4 rounded-2xl"
-                        disabled={!deviceId || isToppingUp}
-                        style={{ opacity: !deviceId || isToppingUp ? 0.5 : 1 }}
+                        disabled={!deviceId || isToppingUp || !isEea}
+                        style={{ opacity: !deviceId || isToppingUp || !isEea ? 0.5 : 1 }}
                       >
                         <Text className="text-amber-200 text-center font-bold text-lg">
                           Continue to payment

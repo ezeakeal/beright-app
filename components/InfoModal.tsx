@@ -39,32 +39,28 @@ export const InfoModal: React.FC<InfoModalProps> = ({ visible, onClose }) => {
 
             <Text className="text-white/90 text-lg font-bold mb-3">Privacy</Text>
             <Text className="text-zinc-400 mb-6 leading-relaxed">
-              We do not track or store any of your personal opinions or data. 
-              Google Sign-In is used solely for managing authentication and subscription tiers to provide 
-              access to advanced AI models. Your conversations remain private and are not harvested.
+              The only time we will ever store your personal opinions or data is when you report a conversation.
+              Other than that, it is completely anonymous - even credits use obfuscated device IDs.
             </Text>
 
             <Text className="text-white/90 text-lg font-bold mb-3">Carbon Negative</Text>
             <Text className="text-zinc-400 mb-6 leading-relaxed">
-              Every conversation matters to us and to the planet. When you purchase credits, 25% of your 
-              payment goes directly to carbon capture initiatives. This means using B'right actively 
-              helps remove CO₂ from the atmosphere, making our app carbon negative.
+              Every conversation matters to us and to the planet. We acknowledge that AI inference has an
+              environmental footprint. When you purchase credits, 25% of your payment goes directly to
+              carbon capture initiatives — and our contribution is designed to far exceed the emissions
+              associated with the AI usage in the app. In practice, using B'right helps remove more CO₂
+              than it generates.
             </Text>
 
-            <Text className="text-white/90 text-lg font-bold mb-3">AI Environmental Impact</Text>
-            <Text className="text-zinc-400 mb-3 leading-relaxed">
-              We're committed to transparency about our AI's environmental footprint. According to Google's 
-              research, a typical AI text prompt uses about as much energy as watching TV for 9 seconds 
-              — and we're constantly working to reduce this further.
-            </Text>
             <TouchableOpacity
               onPress={() => Linking.openURL('https://cloud.google.com/blog/products/infrastructure/measuring-the-environmental-impact-of-ai-inference/')}
               className="mb-6"
             >
               <Text className="text-blue-300/80 underline text-sm">
-                Read Google's environmental impact report →
+                Read about the environmental impact of AI inference →
               </Text>
             </TouchableOpacity>
+            
           </ScrollView>
 
           <View className="p-4 border-t border-zinc-800/50 bg-black/90">

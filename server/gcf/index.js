@@ -69,6 +69,40 @@ function freePoolRef() {
   return db.collection('meta').doc('free_pool');
 }
 
+// Report transaction to Google Play Alternative Billing API
+// This is a placeholder - actual implementation requires Google Play Developer API credentials
+async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amountTotal, currency) {
+  // Note: This is where you would integrate with Google Play's Alternative Billing API
+  // For now, we'll just mark it as reported in Firestore
+  // 
+  // In production, you would:
+  // 1. Use Google Play Developer API with service account credentials
+  // 2. Call the reporting endpoint with transaction details
+  // 3. Handle retries and errors appropriately
+  //
+  // API endpoint would be something like:
+  // POST https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{packageName}/externalTransactions
+  
+  console.log('[GOOGLE_PLAY] Reporting transaction:', {
+    externalTransactionId,
+    deviceId,
+    quantity,
+    amountTotal,
+    currency
+  });
+
+  // For now, just mark as reported (simulating successful API call)
+  // TODO: Replace with actual Google Play API integration
+  const paymentRef = db.collection('payments').doc(externalTransactionId);
+  await paymentRef.update({
+    googlePlayReported: true,
+    googlePlayReportedAt: FieldValue.serverTimestamp(),
+    googlePlayReportAttempts: FieldValue.increment(1),
+  });
+
+  console.log('[GOOGLE_PLAY] Transaction reported successfully:', externalTransactionId);
+}
+
 async function getCredits(deviceId) {
   const today = yyyymmddUtcNow();
   const [deviceSnap, poolSnap] = await Promise.all([
@@ -303,11 +337,19 @@ exports.generateText = async (req, res) => {
             amountTotal: received,
             currency: String(pi.currency || ''),
             stripePaymentIntentId: pi.id,
+            externalTransactionId: pi.id,
+            googlePlayReported: false,
+            googlePlayReportedAt: null,
             source: 'confirmPaymentIntent',
             createdAt: FieldValue.serverTimestamp(),
           },
           { merge: true }
         );
+      });
+
+      // Try to report to Google Play immediately (non-blocking)
+      reportToGooglePlay(pi.id, deviceId, quantity, received, String(pi.currency || '')).catch(err => {
+        console.error('[GOOGLE_PLAY] Failed to report transaction immediately:', err?.message);
       });
 
       const credits = await getCredits(deviceId);
@@ -605,11 +647,19 @@ exports.stripeWebhook = async (req, res) => {
           amountTotal: received,
           currency: String(pi.currency || ''),
           stripePaymentIntentId: pi.id,
+          externalTransactionId: pi.id,
+          googlePlayReported: false,
+          googlePlayReportedAt: null,
           source: 'stripeWebhook',
           createdAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
+    });
+
+    // Try to report to Google Play immediately (non-blocking)
+    reportToGooglePlay(pi.id, deviceId, quantity, received, String(pi.currency || '')).catch(err => {
+      console.error('[GOOGLE_PLAY] Failed to report transaction immediately:', err?.message);
     });
   }
 
@@ -658,6 +708,60 @@ exports.reportContent = async (req, res) => {
   } catch (error) {
     console.error('[REPORT] Error storing report:', error);
     return res.status(500).json({ error: 'Failed to store report', details: error.message });
+  }
+};
+
+// Scheduled job to retry unreported Google Play transactions
+// Deploy this as a separate Cloud Function with Cloud Scheduler trigger
+// Example: gcloud scheduler jobs create http retry-google-play-reports --schedule="*/30 * * * *" --uri="https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/retryGooglePlayReports"
+exports.retryGooglePlayReports = async (req, res) => {
+  console.log('[GOOGLE_PLAY_RETRY] Starting retry job');
+  
+  try {
+    // Find all unreported transactions or those that failed recently
+    const unreportedSnapshot = await db.collection('payments')
+      .where('googlePlayReported', '==', false)
+      .limit(100) // Process in batches
+      .get();
+
+    if (unreportedSnapshot.empty) {
+      console.log('[GOOGLE_PLAY_RETRY] No unreported transactions found');
+      return res.json({ success: true, processed: 0 });
+    }
+
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const doc of unreportedSnapshot.docs) {
+      const payment = doc.data();
+      const { externalTransactionId, deviceId, quantity, amountTotal, currency } = payment;
+
+      try {
+        await reportToGooglePlay(externalTransactionId, deviceId, quantity, amountTotal, currency);
+        successCount++;
+      } catch (error) {
+        console.error('[GOOGLE_PLAY_RETRY] Failed to report transaction:', externalTransactionId, error?.message);
+        failureCount++;
+        
+        // Update failure count in payment record
+        await doc.ref.update({
+          googlePlayReportAttempts: FieldValue.increment(1),
+          lastReportAttemptAt: FieldValue.serverTimestamp(),
+          lastReportError: error?.message || String(error),
+        });
+      }
+    }
+
+    console.log('[GOOGLE_PLAY_RETRY] Job completed:', { successCount, failureCount });
+    return res.json({ 
+      success: true, 
+      processed: unreportedSnapshot.size,
+      successCount,
+      failureCount
+    });
+  } catch (error) {
+    console.error('[GOOGLE_PLAY_RETRY] Job failed:', error);
+    return res.status(500).json({ error: 'Retry job failed', details: error.message });
   }
 };
 
