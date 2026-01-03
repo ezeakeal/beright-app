@@ -20,6 +20,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Constants from "expo-constants";
 import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 import { getDeviceRegionCode, isEeaCountryCode } from "./utils/eea";
+import { getAlternativeBillingToken } from "./utils/googlePlayBilling";
 
 type ScreenState = "HOME" | "TOPIC" | "INPUT" | "ANALYZING" | "RESULTS" | "FOLLOWUP" | "HISTORY";
 type Credits = {
@@ -190,6 +191,23 @@ function AppContent() {
         throw new Error(present.error.message);
       }
 
+      // After successful payment, get the Google Play Alternative Billing token
+      let googlePlayToken: string | null = null;
+      if (isEea) {
+        try {
+          console.log('[Payment] Getting Google Play Alternative Billing token...');
+          googlePlayToken = await getAlternativeBillingToken();
+          if (googlePlayToken) {
+            console.log('[Payment] Got Google Play token successfully');
+          } else {
+            console.warn('[Payment] Failed to get Google Play token (will retry server-side)');
+          }
+        } catch (tokenError: any) {
+          console.error('[Payment] Error getting Google Play token:', tokenError?.message);
+          // Don't fail the payment if token generation fails - server will retry
+        }
+      }
+
       // Credit immediately server-side (idempotent) so the balance updates even if webhook delivery is delayed/misconfigured.
       const confirmRes = await fetch(SERVER_URL, {
         method: "POST",
@@ -197,7 +215,13 @@ function AppContent() {
           "Content-Type": "application/json",
           "X-Device-Id": deviceId,
         },
-        body: JSON.stringify({ action: "confirmPaymentIntent", payload: { clientSecret } }),
+        body: JSON.stringify({ 
+          action: "confirmPaymentIntent", 
+          payload: { 
+            clientSecret,
+            googlePlayToken  // Pass the token to the server
+          } 
+        }),
       });
       const confirmBody = await confirmRes.text();
       if (!confirmRes.ok) {

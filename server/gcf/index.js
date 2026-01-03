@@ -74,7 +74,7 @@ function freePoolRef() {
 // Report transaction to Google Play Alternative Billing API
 // Requires: Service account with Play Console access (Release Manager role)
 // Will fail gracefully until API access is set up in Play Console
-async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amountTotal, currency) {
+async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amountTotal, currency, googlePlayToken = null) {
   const packageName = 'com.vadix.berightapp';
   
   console.log('[GOOGLE_PLAY] Reporting transaction:', {
@@ -82,7 +82,8 @@ async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amo
     deviceId,
     quantity,
     amountTotal,
-    currency
+    currency,
+    hasGooglePlayToken: !!googlePlayToken
   });
 
   try {
@@ -128,7 +129,7 @@ async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amo
           regionCode: 'IE',  // Ireland - merchant country (can be enhanced to use actual user location)
         },
         oneTimeTransaction: {
-          externalTransactionToken: externalTransactionId,  // Use transaction ID as token for server-side reporting
+          externalTransactionToken: googlePlayToken || externalTransactionId,  // Use Google Play token if available, fallback to Stripe ID
         },
       },
     });
@@ -358,8 +359,16 @@ exports.generateText = async (req, res) => {
       const stripe = new Stripe(stripeSecretKey, { apiVersion: '2024-06-20' });
 
       const clientSecret = String(payload?.clientSecret || '');
+      const googlePlayToken = payload?.googlePlayToken || null;  // Optional Google Play token from client
+      
       if (!clientSecret) {
         return res.status(400).json({ error: 'Missing clientSecret' });
+      }
+
+      if (googlePlayToken) {
+        console.log('[PAYMENT] Received Google Play token from client');
+      } else {
+        console.log('[PAYMENT] No Google Play token provided (will use Stripe ID as fallback)');
       }
 
       // client_secret format: pi_xxx_secret_yyy
@@ -409,26 +418,32 @@ exports.generateText = async (req, res) => {
           },
           { merge: true }
         );
-        tx.set(
-          paymentRef,
-          {
-            deviceId,
-            quantity,
-            amountTotal: received,
-            currency: String(pi.currency || ''),
-            stripePaymentIntentId: pi.id,
-            externalTransactionId: pi.id,
-            googlePlayReported: false,
-            googlePlayReportedAt: null,
-            source: 'confirmPaymentIntent',
-            createdAt: FieldValue.serverTimestamp(),
-          },
-          { merge: true }
-        );
+        
+        // Store payment record with Google Play token if available
+        const paymentData = {
+          deviceId,
+          quantity,
+          amountTotal: received,
+          currency: String(pi.currency || ''),
+          stripePaymentIntentId: pi.id,
+          externalTransactionId: pi.id,
+          googlePlayReported: false,
+          googlePlayReportedAt: null,
+          source: 'confirmPaymentIntent',
+          createdAt: FieldValue.serverTimestamp(),
+        };
+        
+        // Add Google Play token if provided
+        if (googlePlayToken) {
+          paymentData.googlePlayToken = googlePlayToken;
+        }
+        
+        tx.set(paymentRef, paymentData, { merge: true });
       });
 
       // Try to report to Google Play immediately (non-blocking)
-      reportToGooglePlay(pi.id, deviceId, quantity, received, String(pi.currency || '')).catch(err => {
+      // Pass the Google Play token if available
+      reportToGooglePlay(pi.id, deviceId, quantity, received, String(pi.currency || ''), googlePlayToken).catch(err => {
         console.error('[GOOGLE_PLAY] Failed to report transaction immediately:', err?.message);
       });
 
@@ -701,6 +716,10 @@ exports.stripeWebhook = async (req, res) => {
     await db.runTransaction(async (tx) => {
       const paymentRef = db.collection('payments').doc(pi.id);
       const paymentSnap = await tx.get(paymentRef);
+      
+      // Get Google Play token from existing payment record if it exists
+      const existingGooglePlayToken = paymentSnap.exists ? paymentSnap.data()?.googlePlayToken : null;
+      
       if (paymentSnap.exists) {
         return;
       }
@@ -719,26 +738,34 @@ exports.stripeWebhook = async (req, res) => {
         },
         { merge: true }
       );
-      tx.set(
-        paymentRef,
-        {
-          deviceId,
-          quantity,
-          amountTotal: received,
-          currency: String(pi.currency || ''),
-          stripePaymentIntentId: pi.id,
-          externalTransactionId: pi.id,
-          googlePlayReported: false,
-          googlePlayReportedAt: null,
-          source: 'stripeWebhook',
-          createdAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+      
+      const paymentData = {
+        deviceId,
+        quantity,
+        amountTotal: received,
+        currency: String(pi.currency || ''),
+        stripePaymentIntentId: pi.id,
+        externalTransactionId: pi.id,
+        googlePlayReported: false,
+        googlePlayReportedAt: null,
+        source: 'stripeWebhook',
+        createdAt: FieldValue.serverTimestamp(),
+      };
+      
+      // Preserve Google Play token if it was set by confirmPaymentIntent
+      if (existingGooglePlayToken) {
+        paymentData.googlePlayToken = existingGooglePlayToken;
+      }
+      
+      tx.set(paymentRef, paymentData, { merge: true });
     });
 
+    // Retrieve the payment record to get the Google Play token if it exists
+    const paymentSnap = await db.collection('payments').doc(pi.id).get();
+    const googlePlayToken = paymentSnap.exists ? paymentSnap.data()?.googlePlayToken : null;
+
     // Try to report to Google Play immediately (non-blocking)
-    reportToGooglePlay(pi.id, deviceId, quantity, received, String(pi.currency || '')).catch(err => {
+    reportToGooglePlay(pi.id, deviceId, quantity, received, String(pi.currency || ''), googlePlayToken).catch(err => {
       console.error('[GOOGLE_PLAY] Failed to report transaction immediately:', err?.message);
     });
   }
@@ -819,10 +846,10 @@ exports.retryGooglePlayReports = async (req, res) => {
 
     for (const doc of unreportedSnapshot.docs) {
       const payment = doc.data();
-      const { externalTransactionId, deviceId, quantity, amountTotal, currency } = payment;
+      const { externalTransactionId, deviceId, quantity, amountTotal, currency, googlePlayToken } = payment;
 
       try {
-        await reportToGooglePlay(externalTransactionId, deviceId, quantity, amountTotal, currency);
+        await reportToGooglePlay(externalTransactionId, deviceId, quantity, amountTotal, currency, googlePlayToken);
         successCount++;
       } catch (error) {
         console.error('[GOOGLE_PLAY_RETRY] Failed to report transaction:', externalTransactionId, error?.message);
