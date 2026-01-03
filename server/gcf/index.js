@@ -16,6 +16,7 @@ const FREE_DAILY_REQUESTS_PER_DEVICE = 1;
 const FREE_POOL_LIMIT = 100;
 const UNIT_PRICE_CENTS = 20; // 20c per request
 const CURRENCY = 'eur';
+const MIN_PURCHASE_QUANTITY = 3; // Stripe requires minimum €0.50 for EUR transactions
 const GEMINI_TEXT_MODEL = 'gemini-2.5-flash-lite';
 const GEMINI_AUDIO_MODEL = 'gemini-2.5-flash';
 
@@ -123,6 +124,9 @@ async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amo
           priceMicros: '0',
         },
         packageName: packageName,
+        userTaxAddress: {
+          regionCode: 'IE',  // Ireland - merchant country (can be enhanced to use actual user location)
+        },
       },
     });
 
@@ -301,7 +305,13 @@ exports.generateText = async (req, res) => {
     // Credits info (does not consume)
     if ((action || '').toLowerCase() === 'credits') {
       const credits = await getCredits(deviceId);
-      return res.json({ ok: true, credits });
+      return res.json({ 
+        ok: true, 
+        credits: {
+          ...credits,
+          minPurchaseQuantity: MIN_PURCHASE_QUANTITY
+        }
+      });
     }
 
     // Stripe PaymentIntent for native PaymentSheet (does not consume)
@@ -314,6 +324,12 @@ exports.generateText = async (req, res) => {
       const quantity = Number(payload?.quantity);
       if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 10000) {
         return res.status(400).json({ error: 'Invalid quantity' });
+      }
+      if (quantity < MIN_PURCHASE_QUANTITY) {
+        return res.status(400).json({ 
+          error: `Minimum purchase is ${MIN_PURCHASE_QUANTITY} credits (Stripe requires minimum €0.50 for EUR transactions)`,
+          minQuantity: MIN_PURCHASE_QUANTITY
+        });
       }
 
       const amount = Math.round(quantity * UNIT_PRICE_CENTS);
