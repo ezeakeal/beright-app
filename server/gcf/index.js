@@ -104,24 +104,25 @@ async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amo
     const nanos = (amountTotal % 100) * 10000000; // Convert cents to nanos (1e-9)
 
     // Report to Google Play Alternative Billing API
+    // Note: The Money type structure varies by Google API - trying direct nesting
     const response = await androidPublisher.externaltransactions.createexternaltransaction({
       parent: `applications/${packageName}`,
       externalTransactionId: externalTransactionId,
       requestBody: {
-        external_transaction_id: externalTransactionId,
-        transaction_time: transactionTime,
-        transaction_state: 1,  // 1 = TRANSACTION_STATE_COMPLETED
-        original_pre_tax_amount: {
-          currencyCode: currency.toUpperCase(),  // camelCase for nested objects
+        externalTransactionId: externalTransactionId,
+        transactionTime: transactionTime,
+        transactionState: 1,  // 1 = TRANSACTION_STATE_COMPLETED
+        originalPreTaxAmount: {
+          currencyCode: currency.toUpperCase(),
           units: units.toString(),
           nanos: nanos,
         },
-        tax_amount: {
-          currencyCode: currency.toUpperCase(),  // camelCase for nested objects
+        taxAmount: {
+          currencyCode: currency.toUpperCase(),
           units: '0',
           nanos: 0,
         },
-        package_name: packageName,
+        packageName: packageName,
       },
     });
 
