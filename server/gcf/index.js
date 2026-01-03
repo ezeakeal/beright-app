@@ -110,7 +110,7 @@ async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amo
       requestBody: {
         externalTransactionId: externalTransactionId,
         transactionTime: transactionTime,
-        transactionState: 'TRANSACTION_STATE_COMPLETED',
+        transactionState: 1,  // 1 = TRANSACTION_STATE_COMPLETED
         originalPreTaxAmount: {
           currencyCode: currency.toUpperCase(),
           units: units.toString(),
