@@ -1,0 +1,23 @@
+steps:
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        set -euo pipefail
+
+        # Deploy retry Google Play reports as a separate Cloud Function (Gen2).
+        # Env vars (Firestore) should be set on the function once in GCP;
+        # redeploying without --set-env-vars preserves existing env vars.
+        gcloud functions deploy retryGooglePlayReports \
+          --gen2 \
+          --runtime=nodejs20 \
+          --region=europe-west1 \
+          --source=server/gcf \
+          --entry-point=retryGooglePlayReports \
+          --trigger-http \
+          --no-allow-unauthenticated
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
