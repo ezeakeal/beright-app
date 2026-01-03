@@ -112,12 +112,12 @@ async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amo
         transaction_time: transactionTime,
         transaction_state: 1,  // 1 = TRANSACTION_STATE_COMPLETED
         original_pre_tax_amount: {
-          currency_code: currency.toUpperCase(),
+          currencyCode: currency.toUpperCase(),  // camelCase for nested objects
           units: units.toString(),
           nanos: nanos,
         },
         tax_amount: {
-          currency_code: currency.toUpperCase(),
+          currencyCode: currency.toUpperCase(),  // camelCase for nested objects
           units: '0',
           nanos: 0,
         },
