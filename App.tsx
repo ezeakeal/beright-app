@@ -87,6 +87,7 @@ function AppContent() {
   const [isToppingUp, setIsToppingUp] = useState(false);
   const [showTopUp, setShowTopUp] = useState(false);
   const [topUpQuantity, setTopUpQuantity] = useState(5);
+  const minPurchaseQuantity = 3; // Stripe minimum for EUR transactions
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [conversationReported, setConversationReported] = useState(false);
@@ -148,6 +149,9 @@ function AppContent() {
     async (quantity: number) => {
       if (!deviceId) throw new Error("Device ID not ready yet");
       if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Invalid quantity");
+      if (quantity < minPurchaseQuantity) {
+        throw new Error(`Minimum purchase is ${minPurchaseQuantity} credits (Stripe requirement for EUR)`);
+      }
 
       const res = await fetch(SERVER_URL, {
         method: "POST",
@@ -204,7 +208,7 @@ function AppContent() {
       await refreshCredits();
       setTimeout(() => refreshCredits(), 1500);
     },
-    [deviceId, initPaymentSheet, merchantCountry, presentPaymentSheet, refreshCredits]
+    [deviceId, initPaymentSheet, merchantCountry, presentPaymentSheet, refreshCredits, minPurchaseQuantity]
   );
 
   const handleTopUpPress = React.useCallback(async () => {
@@ -252,7 +256,7 @@ function AppContent() {
     } finally {
       setIsToppingUp(false);
     }
-  }, [isEea, isToppingUp, showTopUpNotAvailable, startTopUp, topUpQuantity]);
+  }, [isEea, isToppingUp, showTopUpNotAvailable, startTopUp, topUpQuantity, minPurchaseQuantity]);
 
   React.useEffect(() => {
     if (!deviceId) return;
@@ -738,7 +742,7 @@ function AppContent() {
 
                       <View className="flex-row items-center justify-between bg-black/60 border border-zinc-800/50 rounded-2xl p-4 mb-5">
                         <TouchableOpacity
-                          onPress={() => setTopUpQuantity((q) => Math.max(1, q - 1))}
+                          onPress={() => setTopUpQuantity((q) => Math.max(minPurchaseQuantity, q - 1))}
                           className="border border-zinc-700/60 w-12 h-12 rounded-full items-center justify-center"
                         >
                           <Text className="text-white/80 text-2xl font-bold">−</Text>
@@ -763,11 +767,17 @@ function AppContent() {
                         </TouchableOpacity>
                       </View>
 
+                      <View className="bg-blue-900/15 border border-blue-500/30 rounded-2xl p-3 mb-4">
+                        <Text className="text-blue-200/70 text-xs leading-relaxed text-center">
+                          ℹ️ Minimum {minPurchaseQuantity} credits (€{((minPurchaseQuantity * (credits?.unitPriceCents || 20)) / 100).toFixed(2)}) required by Stripe for EUR transactions
+                        </Text>
+                      </View>
+
                       <TouchableOpacity
                         onPress={handleConfirmTopUp}
                         className="border-2 border-amber-500/70 bg-amber-500/10 py-4 rounded-2xl"
-                        disabled={!deviceId || isToppingUp || !isEea}
-                        style={{ opacity: !deviceId || isToppingUp || !isEea ? 0.5 : 1 }}
+                        disabled={!deviceId || isToppingUp || !isEea || topUpQuantity < minPurchaseQuantity}
+                        style={{ opacity: !deviceId || isToppingUp || !isEea || topUpQuantity < minPurchaseQuantity ? 0.5 : 1 }}
                       >
                         <Text className="text-amber-200 text-center font-bold text-lg">
                           Continue to payment
