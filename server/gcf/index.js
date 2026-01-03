@@ -775,6 +775,11 @@ exports.reportContent = async (req, res) => {
 // Deploy this as a separate Cloud Function with Cloud Scheduler trigger
 // Example: gcloud scheduler jobs create http retry-google-play-reports --schedule="*/30 * * * *" --uri="https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/retryGooglePlayReports"
 exports.retryGooglePlayReports = async (req, res) => {
+  // Only allow POST requests from Cloud Scheduler
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
   console.log('[GOOGLE_PLAY_RETRY] Starting retry job');
   
   try {
