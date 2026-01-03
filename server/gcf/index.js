@@ -127,7 +127,9 @@ async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amo
         userTaxAddress: {
           regionCode: 'IE',  // Ireland - merchant country (can be enhanced to use actual user location)
         },
-        oneTimeTransaction: {},  // Required: indicates this is a one-time purchase, not recurring
+        oneTimeTransaction: {
+          externalTransactionToken: externalTransactionId,  // Use transaction ID as token for server-side reporting
+        },
       },
     });
 
