@@ -1,6 +1,8 @@
-import { Platform, NativeModules } from 'react-native';
+import { Platform } from 'react-native';
+import { requireNativeModule } from 'expo-modules-core';
 
-const { GooglePlayBillingModule } = NativeModules;
+// Use Expo's requireNativeModule for better compatibility with Expo Modules API
+const GooglePlayBillingModule = requireNativeModule('GooglePlayBillingModule');
 
 /**
  * Get the external transaction token from Google Play Billing Library
@@ -16,11 +18,6 @@ export async function getAlternativeBillingToken(): Promise<string | null> {
   // Only works on Android
   if (Platform.OS !== 'android') {
     console.log('[GooglePlayBilling] Not on Android, skipping token generation');
-    return null;
-  }
-
-  if (!GooglePlayBillingModule) {
-    console.error('[GooglePlayBilling] Native module not found');
     return null;
   }
 

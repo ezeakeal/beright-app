@@ -86,6 +86,13 @@ async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amo
     hasGooglePlayToken: !!googlePlayToken
   });
 
+  // CRITICAL: Must have Google Play token - no fallbacks!
+  if (!googlePlayToken) {
+    const error = new Error('Missing Google Play token - cannot report transaction without valid externalTransactionToken from Android Billing Library');
+    console.error('[GOOGLE_PLAY] CRITICAL ERROR:', error.message);
+    throw error;
+  }
+
   try {
     // Initialize Google Auth using Application Default Credentials
     // This uses the Cloud Function's service account automatically
@@ -129,7 +136,7 @@ async function reportToGooglePlay(externalTransactionId, deviceId, quantity, amo
           regionCode: 'IE',  // Ireland - merchant country (can be enhanced to use actual user location)
         },
         oneTimeTransaction: {
-          externalTransactionToken: googlePlayToken || externalTransactionId,  // Use Google Play token if available, fallback to Stripe ID
+          externalTransactionToken: googlePlayToken,  // MUST be token from Android Billing Library
         },
       },
     });
