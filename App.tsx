@@ -154,6 +154,24 @@ function AppContent() {
         throw new Error(`Minimum purchase is ${minPurchaseQuantity} credits (Stripe requirement for EUR)`);
       }
 
+      // Get Google Play Alternative Billing token BEFORE starting the payment
+      // This token must be generated before redirecting to the external payment processor
+      let googlePlayToken: string | null = null;
+      if (isEea) {
+        try {
+          console.log('[Payment] Getting Google Play Alternative Billing token BEFORE payment...');
+          googlePlayToken = await getAlternativeBillingToken();
+          if (googlePlayToken) {
+            console.log('[Payment] Got Google Play token successfully');
+          } else {
+            console.warn('[Payment] Failed to get Google Play token (will use fallback)');
+          }
+        } catch (tokenError: any) {
+          console.error('[Payment] Error getting Google Play token:', tokenError?.message);
+          // Continue with payment even if token generation fails
+        }
+      }
+
       const res = await fetch(SERVER_URL, {
         method: "POST",
         headers: {
@@ -191,23 +209,6 @@ function AppContent() {
         throw new Error(present.error.message);
       }
 
-      // After successful payment, get the Google Play Alternative Billing token
-      let googlePlayToken: string | null = null;
-      if (isEea) {
-        try {
-          console.log('[Payment] Getting Google Play Alternative Billing token...');
-          googlePlayToken = await getAlternativeBillingToken();
-          if (googlePlayToken) {
-            console.log('[Payment] Got Google Play token successfully');
-          } else {
-            console.warn('[Payment] Failed to get Google Play token (will retry server-side)');
-          }
-        } catch (tokenError: any) {
-          console.error('[Payment] Error getting Google Play token:', tokenError?.message);
-          // Don't fail the payment if token generation fails - server will retry
-        }
-      }
-
       // Credit immediately server-side (idempotent) so the balance updates even if webhook delivery is delayed/misconfigured.
       const confirmRes = await fetch(SERVER_URL, {
         method: "POST",
@@ -219,7 +220,7 @@ function AppContent() {
           action: "confirmPaymentIntent", 
           payload: { 
             clientSecret,
-            googlePlayToken  // Pass the token to the server
+            googlePlayToken  // Pass the token that was generated BEFORE payment
           } 
         }),
       });
@@ -232,7 +233,7 @@ function AppContent() {
       await refreshCredits();
       setTimeout(() => refreshCredits(), 1500);
     },
-    [deviceId, initPaymentSheet, merchantCountry, presentPaymentSheet, refreshCredits, minPurchaseQuantity]
+    [deviceId, initPaymentSheet, merchantCountry, presentPaymentSheet, refreshCredits, minPurchaseQuantity, isEea]
   );
 
   const handleTopUpPress = React.useCallback(async () => {
