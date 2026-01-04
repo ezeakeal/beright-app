@@ -53,11 +53,15 @@ export default () => ({
             useFrameworks: "static"
           },
           android: {
-            extraMavenRepos: []
+            extraMavenRepos: [],
+            extraProguardRules: "",
+            packagingOptions: {
+              pickFirst: []
+            }
           }
         }
       ],
-      "./eas-build-plugin.js"
+      "./google-play-billing-plugin.js"
     ],
     extra: {
       eas: {
