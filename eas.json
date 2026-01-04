@@ -17,13 +17,9 @@
     "production": {
       "autoIncrement": true,
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "app-bundle",
+        "withoutCredentials": false
       }
-    }
-  },
-  "hooks": {
-    "postInstall": {
-      "command": "bash eas-build-post-install.sh"
     }
   },
   "submit": {

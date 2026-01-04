@@ -51,9 +51,13 @@ export default () => ({
         {
           ios: {
             useFrameworks: "static"
+          },
+          android: {
+            extraMavenRepos: []
           }
         }
-      ]
+      ],
+      "./eas-build-plugin.js"
     ],
     extra: {
       eas: {
