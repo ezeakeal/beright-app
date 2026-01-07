@@ -1,5 +1,6 @@
 package com.vadix.berightapp
 
+import android.content.Context
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.Promise
@@ -13,9 +14,13 @@ class GooglePlayBillingModule : Module() {
 
     AsyncFunction("getAlternativeBillingToken") { promise: Promise ->
       try {
+        // Get the Android application context
+        val context: Context = appContext.reactContext?.applicationContext
+          ?: throw Exception("Application context not available")
+        
         // Initialize billing client if not already done
         if (billingClient == null) {
-          billingClient = BillingClient.newBuilder(appContext.reactContext!!)
+          billingClient = BillingClient.newBuilder(context)
             .setListener { _, _ -> }
             .enablePendingPurchases()
             .build()
