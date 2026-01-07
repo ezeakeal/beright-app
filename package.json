@@ -28,6 +28,7 @@
     "expo-file-system": "~19.0.19",
     "expo-linear-gradient": "^15.0.7",
     "expo-localization": "~17.0.8",
+    "expo-modules-core": "~3.0.16",
     "expo-print": "^15.0.8",
     "expo-sharing": "^14.0.8",
     "expo-speech": "~14.0.7",
@@ -50,7 +51,6 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "dotenv": "^16.4.5",
-    "expo-modules-core": "~3.0.16",
     "typescript": "~5.9.2"
   },
   "private": true
