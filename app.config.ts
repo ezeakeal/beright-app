@@ -57,7 +57,10 @@ export default () => ({
             extraProguardRules: "",
             packagingOptions: {
               pickFirst: []
-            }
+            },
+            extraDependencies: [
+              "com.android.billingclient:billing:7.1.1"
+            ]
           }
         }
       ],

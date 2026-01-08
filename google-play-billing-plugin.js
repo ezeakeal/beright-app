@@ -1,26 +1,12 @@
-const { withAppBuildGradle, withDangerousMod } = require('@expo/config-plugins');
+const { withDangerousMod } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
 /**
- * Config plugin to add Google Play Billing support
+ * Config plugin to copy Google Play Billing native module
+ * Dependency is added via expo-build-properties in app.config.ts
  */
-const withGooglePlayBillingDependency = (config) => {
-  // Add dependency to build.gradle
-  config = withAppBuildGradle(config, (config) => {
-    const contents = config.modResults.contents;
-    
-    if (!contents.includes('com.android.billingclient:billing')) {
-      config.modResults.contents = contents.replace(
-        /dependencies\s*\{/,
-        `dependencies {
-    implementation("com.android.billingclient:billing:6.1.0")`
-      );
-    }
-    
-    return config;
-  });
-
+const withGooglePlayBillingModule = (config) => {
   // Copy native module to Android project
   config = withDangerousMod(config, [
     'android',
@@ -61,5 +47,5 @@ const withGooglePlayBillingDependency = (config) => {
   return config;
 };
 
-module.exports = withGooglePlayBillingDependency;
+module.exports = withGooglePlayBillingModule;
 
