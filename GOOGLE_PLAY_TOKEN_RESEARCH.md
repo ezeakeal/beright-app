@@ -157,10 +157,12 @@ Unresolved reference 'BillingProgramReportingDetailsParams'
 Unresolved reference 'BillingProgram'
 ```
 
-**Fix:**
-Use `expo-build-properties` in `app.config.ts`:
+**Root Cause:**
+The billing library dependency must be added to `app/build.gradle` during the Expo prebuild process. There are multiple approaches, with varying success:
 
+**Approach 1: expo-build-properties.extraDependencies** ❌ Didn't work reliably
 ```typescript
+// app.config.ts
 {
   plugins: [
     [
@@ -176,8 +178,50 @@ Use `expo-build-properties` in `app.config.ts`:
   ]
 }
 ```
+*Issue: During EAS builds, this didn't consistently add the dependency.*
 
-**Don't** try to modify `build.gradle` directly via config plugins - use `expo-build-properties`.
+**Approach 2: withAppBuildGradle (Config Plugin)** ✅ Correct solution
+```javascript
+// google-play-billing-plugin.js
+const { withAppBuildGradle } = require('@expo/config-plugins');
+
+const withGooglePlayBillingModule = (config) => {
+  config = withAppBuildGradle(config, (config) => {
+    const { contents } = config.modResults;
+    const billingDep = 'implementation("com.android.billingclient:billing:7.1.1")';
+    
+    if (!contents.includes('com.android.billingclient:billing')) {
+      config.modResults.contents = contents.replace(
+        /(dependencies\s*\{)/,
+        `$1\n    ${billingDep}`
+      );
+    }
+    
+    return config;
+  });
+  
+  return config;
+};
+
+module.exports = withGooglePlayBillingModule;
+```
+
+Then in `app.config.ts`:
+```typescript
+{
+  plugins: [
+    './google-play-billing-plugin.js'
+  ]
+}
+```
+
+**Verification:**
+```bash
+# After local prebuild
+expo prebuild --clean
+cat android/app/build.gradle | grep billing
+# Should output: implementation("com.android.billingclient:billing:7.1.1")
+```
 
 ### Issue 4: Context Access in Expo Modules
 
