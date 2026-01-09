@@ -188,7 +188,7 @@ const { withAppBuildGradle } = require('@expo/config-plugins');
 const withGooglePlayBillingModule = (config) => {
   config = withAppBuildGradle(config, (config) => {
     const { contents } = config.modResults;
-    const billingDep = 'implementation("com.android.billingclient:billing:7.1.1")';
+    const billingDep = 'implementation("com.android.billingclient:billing:6.2.1")';
     
     if (!contents.includes('com.android.billingclient:billing')) {
       config.modResults.contents = contents.replace(

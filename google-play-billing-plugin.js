@@ -10,7 +10,7 @@ const withGooglePlayBillingModule = (config) => {
   // Add dependency to app/build.gradle
   config = withAppBuildGradle(config, (config) => {
     const { contents } = config.modResults;
-    const billingDep = 'implementation("com.android.billingclient:billing:7.1.1")';
+    const billingDep = 'implementation("com.android.billingclient:billing:6.2.1")';
     
     // Only add if not already present
     if (!contents.includes('com.android.billingclient:billing')) {
