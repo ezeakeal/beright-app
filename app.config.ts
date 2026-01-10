@@ -59,7 +59,7 @@ export default () => ({
               pickFirst: []
             },
             extraDependencies: [
-              "com.android.billingclient:billing:7.1.1"
+              "com.android.billingclient:billing:6.2.1"
             ]
           }
         }
