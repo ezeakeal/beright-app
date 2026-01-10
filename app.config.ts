@@ -57,14 +57,10 @@ export default () => ({
             extraProguardRules: "",
             packagingOptions: {
               pickFirst: []
-            },
-            extraDependencies: [
-              "com.android.billingclient:billing:6.2.1"
-            ]
+            }
           }
         }
-      ],
-      "./google-play-billing-plugin.js"
+      ]
     ],
     extra: {
       eas: {

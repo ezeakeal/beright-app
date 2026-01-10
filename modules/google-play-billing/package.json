@@ -1,0 +1,8 @@
+{
+  "name": "google-play-billing",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {},
+  "dependencies": {},
+  "devDependencies": {}
+}
