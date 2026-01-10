@@ -20,7 +20,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Constants from "expo-constants";
 import { StripeProvider, useStripe } from "@stripe/stripe-react-native";
 import { getDeviceRegionCode, isEeaCountryCode } from "./utils/eea";
-import { getAlternativeBillingToken } from "google-play-billing";
+import { getAlternativeBillingToken } from "./utils/googlePlayBilling";
 
 type ScreenState = "HOME" | "TOPIC" | "INPUT" | "ANALYZING" | "RESULTS" | "FOLLOWUP" | "HISTORY";
 type Credits = {
