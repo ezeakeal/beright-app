@@ -57,15 +57,10 @@ export default () => ({
             extraProguardRules: "",
             packagingOptions: {
               pickFirst: []
-            },
-            // Try adding dependency here for the app module
-            extraDependencies: [
-              "com.android.billingclient:billing:6.2.1"
-            ]
+            }
           }
         }
-      ],
-      "./with-google-play-billing.js"
+      ]
     ],
     extra: {
       eas: {
