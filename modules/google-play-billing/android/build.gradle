@@ -25,6 +25,7 @@ buildscript {
 }
 
 android {
+  namespace "com.vadix.berightapp.googleplaybilling"
   compileSdkVersion safeExtGet("compileSdkVersion", 35)
 
   defaultConfig {
