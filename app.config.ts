@@ -60,7 +60,8 @@ export default () => ({
             }
           }
         }
-      ]
+      ],
+      "./with-google-play-billing.js"
     ],
     extra: {
       eas: {
