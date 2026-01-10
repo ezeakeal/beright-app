@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "1021561698058",
+    "project_id": "beright-app",
+    "storage_bucket": "beright-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1021561698058:android:7066328894df0a4a956cf3",
+        "android_client_info": {
+          "package_name": "com.vadix.berightapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1021561698058-ll52hathk3avij310ji1jptmjcvjp8u0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vadix.berightapp",
+            "certificate_hash": "848e2b5165295f4ec220dd6bedfbfea1a69e7e08"
+          }
+        },
+        {
+          "client_id": "1021561698058-7b30q1uck3h81aajovu3gnv1vfllhsv0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAUQ1Ns7CyO9MX1KFcN1i1R4WqXkfU7fmk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1021561698058-7b30q1uck3h81aajovu3gnv1vfllhsv0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1021561698058-dq2i5m7hgpgjcqgrabbqq9d8aki0efc2.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.danvagg.conflictresolutionapp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

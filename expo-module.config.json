@@ -1,7 +1,0 @@
-{
-  "platforms": ["android"],
-  "android": {
-    "modules": ["com.vadix.berightapp.GooglePlayBillingModule"]
-  }
-}
-

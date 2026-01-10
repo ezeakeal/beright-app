@@ -163,4 +163,3 @@ expo-env.d.ts
 
 # Generated native folders (Prebuild)
 /ios
-/android
