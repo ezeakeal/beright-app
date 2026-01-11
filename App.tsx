@@ -164,11 +164,12 @@ function AppContent() {
           if (googlePlayToken) {
             console.log('[Payment] Got Google Play token successfully');
           } else {
-            console.warn('[Payment] Failed to get Google Play token (will use fallback)');
+            throw new Error('Failed to obtain Google Play Alternative Billing token.');
           }
         } catch (tokenError: any) {
-          console.error('[Payment] Error getting Google Play token:', tokenError?.message);
-          // Continue with payment even if token generation fails
+          throw new Error(
+            `Failed to obtain Google Play Alternative Billing token: ${tokenError?.message || String(tokenError)}`
+          );
         }
       }
 

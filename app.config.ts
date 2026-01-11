@@ -4,7 +4,8 @@ export default () => ({
   expo: {
     name: "B'right",
     slug: "conflict-resolution-app",
-    version: "1.0.2",
+    version: "1.0.3",
+    runtimeVersion: { policy: "appVersion" },
     orientation: "portrait",
     icon: "./assets/icon.png",
     userInterfaceStyle: "light",

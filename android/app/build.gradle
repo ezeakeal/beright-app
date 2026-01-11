@@ -92,8 +92,8 @@ android {
         applicationId 'com.vadix.berightapp'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "1.0.2"
+        versionCode 4
+        versionName "1.0.3"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -179,9 +179,7 @@ dependencies {
     } else {
         implementation jscFlavor
     }
-    
-    // Google Play Billing Library for Alternative Billing
-    implementation "com.android.billingclient:billing:6.2.1"
+    // Note: Billing dependency is managed by react-native-iap.
 }
 
 apply plugin: 'com.google.gms.google-services'
