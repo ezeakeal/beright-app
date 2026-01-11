@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import {
   initConnection,
   checkAlternativeBillingAvailabilityAndroid,
+  showAlternativeBillingDialogAndroid,
   createAlternativeBillingTokenAndroid,
   endConnection,
 } from 'react-native-iap';
@@ -14,52 +15,42 @@ export async function getAlternativeBillingToken(): Promise<string | null> {
     return null;
   }
 
-  try {
-    // Initialize connection with alternative billing mode
-    if (!isInitialized) {
-      console.log('[GooglePlayBilling] Initializing IAP connection...');
-      await initConnection({
-        alternativeBillingModeAndroid: 'alternative-only',
-      });
-      isInitialized = true;
-    }
+  if (!isInitialized) {
+    console.log('[GooglePlayBilling] Initializing IAP connection...');
+    await initConnection({
+      alternativeBillingModeAndroid: 'alternative-only',
+    });
+    isInitialized = true;
+  }
 
-    // Check if alternative billing is available
-    console.log('[GooglePlayBilling] Checking alternative billing availability...');
-    const isAvailable = await checkAlternativeBillingAvailabilityAndroid();
-    
-    if (!isAvailable) {
-      console.warn('[GooglePlayBilling] Alternative billing not available');
-      return null;
-    }
-
-    // Generate the external transaction token
-    // Note: We pass a dummy productId since we're using Stripe for actual payment
-    console.log('[GooglePlayBilling] Creating alternative billing token...');
-    const token = await createAlternativeBillingTokenAndroid('credits');
-
-    if (token) {
-      console.log('[GooglePlayBilling] Token generated successfully');
-      return token;
-    } else {
-      console.warn('[GooglePlayBilling] No token returned');
-      return null;
-    }
-  } catch (error: any) {
-    console.error('[GooglePlayBilling] Failed to get token:', error?.message || error);
+  // 3-step alternative billing flow (react-native-iap 14.4.12):
+  // 1) availability -> 2) disclosure dialog -> 3) token
+  console.log('[GooglePlayBilling] Checking alternative billing availability...');
+  const isAvailable = await checkAlternativeBillingAvailabilityAndroid();
+  if (!isAvailable) {
+    console.warn('[GooglePlayBilling] Alternative billing not available');
     return null;
   }
+
+  console.log('[GooglePlayBilling] Showing alternative billing dialog...');
+  const userAccepted = await showAlternativeBillingDialogAndroid();
+  if (!userAccepted) {
+    throw new Error('User did not accept the alternative billing dialog.');
+  }
+
+  console.log('[GooglePlayBilling] Creating alternative billing token...');
+  const token = await createAlternativeBillingTokenAndroid();
+  if (!token) {
+    throw new Error('No external transaction token returned from Google Play.');
+  }
+
+  console.log('[GooglePlayBilling] Token generated successfully');
+  return token;
 }
 
-// Clean up connection when app closes
 export async function cleanupBillingConnection(): Promise<void> {
-  if (isInitialized) {
-    try {
-      await endConnection();
-      isInitialized = false;
-      console.log('[GooglePlayBilling] Connection closed');
-    } catch (error: any) {
-      console.error('[GooglePlayBilling] Error closing connection:', error?.message);
-    }
-  }
+  if (!isInitialized) return;
+  await endConnection();
+  isInitialized = false;
+  console.log('[GooglePlayBilling] Connection closed');
 }
